@@ -1,14 +1,16 @@
-import { Building2, Users, Zap, Check, Loader2, AlertCircle, Cloud, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Building2, Users, Zap, Check, Loader2, AlertCircle, Cloud, ChevronDown, ChevronUp, ExternalLink, RotateCcw } from 'lucide-react';
 import { CompanyResearchProgress, ResearchContact } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 
 interface ResearchCompanyCardProps {
   companyProgress: CompanyResearchProgress;
   isExpanded: boolean;
   onToggleExpand: () => void;
   getStepStatus: (stepId: string, companyStep: string) => string;
+  onRetryStep?: (companyId: string, step: 'company' | 'people' | 'clay') => void;
 }
 
 const researchSteps = [
@@ -87,9 +89,10 @@ export function ResearchCompanyCard({
   companyProgress, 
   isExpanded, 
   onToggleExpand,
-  getStepStatus 
+  getStepStatus,
+  onRetryStep
 }: ResearchCompanyCardProps) {
-  const { companyName, step, companyData, peopleData, error } = companyProgress;
+  const { companyId, companyName, step, companyData, peopleData, error } = companyProgress;
 
   // Determine if we're currently loading each section
   const isLoadingCompany = step === 'company';
@@ -205,6 +208,39 @@ export function ResearchCompanyCard({
       {/* Expanded Content - show during loading or when data exists */}
       {isExpanded && (companyData || peopleData || isProcessing) && (
         <div className="px-4 pb-4 space-y-4 border-t border-border/50 pt-4">
+          {/* Retry Buttons */}
+          {onRetryStep && !isProcessing && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'company'); }}
+                className="text-xs"
+              >
+                <RotateCcw className="w-3 h-3 mr-1" />
+                Retry Company
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'people'); }}
+                className="text-xs"
+              >
+                <RotateCcw className="w-3 h-3 mr-1" />
+                Retry People
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'clay'); }}
+                className="text-xs"
+              >
+                <RotateCcw className="w-3 h-3 mr-1" />
+                Retry/Skip Clay
+              </Button>
+            </div>
+          )}
+
           {/* Company Data or Loading Skeleton */}
           {isLoadingCompany && <CompanyDataSkeleton />}
           {companyData && (
@@ -215,6 +251,12 @@ export function ResearchCompanyCard({
                 <Check className="w-3 h-3 text-green-500" />
               </h4>
               <div className="bg-background rounded-lg p-3 space-y-2">
+                {companyData.company_status && (
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Status:</span>{' '}
+                    <span className="font-medium">{companyData.company_status}</span>
+                  </p>
+                )}
                 {companyData.acquiredBy && (
                   <p className="text-sm">
                     <span className="text-muted-foreground">Acquired by:</span>{' '}
