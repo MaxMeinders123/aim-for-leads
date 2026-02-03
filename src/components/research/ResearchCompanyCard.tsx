@@ -2,6 +2,7 @@ import { Building2, Users, Zap, Check, Loader2, AlertCircle, Cloud, ChevronDown,
 import { CompanyResearchProgress, ResearchContact } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface ResearchCompanyCardProps {
   companyProgress: CompanyResearchProgress;
@@ -16,6 +17,72 @@ const researchSteps = [
   { id: 'clay', label: 'Enrich', icon: Zap },
 ];
 
+// Loading skeleton for company data
+function CompanyDataSkeleton() {
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+        <Building2 className="w-4 h-4" />
+        <span className="flex items-center gap-2">
+          Researching company...
+          <Loader2 className="w-3 h-3 animate-spin" />
+        </span>
+      </h4>
+      <div className="bg-background rounded-lg p-3 space-y-3">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-48" />
+        <Skeleton className="h-4 w-40" />
+      </div>
+    </div>
+  );
+}
+
+// Loading skeleton for people data
+function PeopleDataSkeleton() {
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+        <Users className="w-4 h-4" />
+        <span className="flex items-center gap-2">
+          Finding contacts...
+          <Loader2 className="w-3 h-3 animate-spin" />
+        </span>
+      </h4>
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-background rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-5 w-14 rounded-full" />
+            </div>
+            <Skeleton className="h-3 w-36" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Loading skeleton for Clay enrichment
+function ClayDataSkeleton() {
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+        <Zap className="w-4 h-4" />
+        <span className="flex items-center gap-2">
+          Enriching data...
+          <Loader2 className="w-3 h-3 animate-spin" />
+        </span>
+      </h4>
+      <div className="bg-background rounded-lg p-3 space-y-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+      </div>
+    </div>
+  );
+}
+
 export function ResearchCompanyCard({ 
   companyProgress, 
   isExpanded, 
@@ -24,9 +91,15 @@ export function ResearchCompanyCard({
 }: ResearchCompanyCardProps) {
   const { companyName, step, companyData, peopleData, error } = companyProgress;
 
+  // Determine if we're currently loading each section
+  const isLoadingCompany = step === 'company';
+  const isLoadingPeople = step === 'people';
+  const isLoadingClay = step === 'clay';
+  const isProcessing = isLoadingCompany || isLoadingPeople || isLoadingClay;
+
   const getStatusColor = () => {
     if (step === 'error') return 'border-destructive bg-destructive/5';
-    if (step === 'complete') return 'border-green-500 bg-green-50';
+    if (step === 'complete') return 'border-green-500 bg-green-50 dark:bg-green-950/20';
     return 'border-primary bg-primary/5';
   };
 
@@ -34,10 +107,10 @@ export function ResearchCompanyCard({
     if (!companyData?.company_status) return null;
     
     const statusColors: Record<string, string> = {
-      'Operating': 'bg-green-100 text-green-800',
-      'Acquired': 'bg-yellow-100 text-yellow-800',
-      'Bankrupt': 'bg-red-100 text-red-800',
-      'Not_Found': 'bg-gray-100 text-gray-800',
+      'Operating': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+      'Acquired': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+      'Bankrupt': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+      'Not_Found': 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400',
     };
     
     return (
@@ -49,11 +122,18 @@ export function ResearchCompanyCard({
 
   const getPriorityColor = (priority: string) => {
     switch (priority.toLowerCase()) {
-      case 'high': return 'bg-red-100 text-red-800';
-      case 'medium': return 'bg-yellow-100 text-yellow-800';
-      case 'low': return 'bg-green-100 text-green-800';
+      case 'high': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'medium': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
+      case 'low': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
       default: return 'bg-muted text-muted-foreground';
     }
+  };
+
+  const getCurrentStepLabel = () => {
+    if (isLoadingCompany) return 'Researching company status...';
+    if (isLoadingPeople) return 'Finding decision makers...';
+    if (isLoadingClay) return 'Enriching contact data...';
+    return null;
   };
 
   return (
@@ -76,6 +156,12 @@ export function ResearchCompanyCard({
               <span className="font-medium text-foreground">{companyName}</span>
               {getCompanyStatusBadge()}
             </div>
+            {isProcessing && (
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                {getCurrentStepLabel()}
+              </p>
+            )}
             {error && (
               <p className="text-xs text-destructive mt-1">{error}</p>
             )}
@@ -91,9 +177,9 @@ export function ResearchCompanyCard({
                 <div
                   key={s.id}
                   className={cn(
-                    'w-6 h-6 rounded-full flex items-center justify-center text-xs',
+                    'w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all',
                     status === 'completed' && 'bg-green-500 text-white',
-                    status === 'current' && 'bg-primary text-primary-foreground',
+                    status === 'current' && 'bg-primary text-primary-foreground ring-2 ring-primary/30 ring-offset-1',
                     status === 'pending' && 'bg-muted text-muted-foreground',
                     status === 'error' && 'bg-destructive text-destructive-foreground'
                   )}
@@ -110,21 +196,23 @@ export function ResearchCompanyCard({
             })}
           </div>
           
-          {(companyData || peopleData) && (
+          {(companyData || peopleData || isProcessing) && (
             isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />
           )}
         </div>
       </button>
 
-      {/* Expanded Content */}
-      {isExpanded && (companyData || peopleData) && (
+      {/* Expanded Content - show during loading or when data exists */}
+      {isExpanded && (companyData || peopleData || isProcessing) && (
         <div className="px-4 pb-4 space-y-4 border-t border-border/50 pt-4">
-          {/* Company Data */}
+          {/* Company Data or Loading Skeleton */}
+          {isLoadingCompany && <CompanyDataSkeleton />}
           {companyData && (
             <div className="space-y-2">
               <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
                 Company Research
+                <Check className="w-3 h-3 text-green-500" />
               </h4>
               <div className="bg-background rounded-lg p-3 space-y-2">
                 {companyData.acquiredBy && (
@@ -168,12 +256,14 @@ export function ResearchCompanyCard({
             </div>
           )}
 
-          {/* People Data */}
+          {/* People Data or Loading Skeleton */}
+          {isLoadingPeople && <PeopleDataSkeleton />}
           {peopleData?.contacts && peopleData.contacts.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 Contacts Found ({peopleData.contacts.length})
+                <Check className="w-3 h-3 text-green-500" />
               </h4>
               <div className="space-y-2">
                 {peopleData.contacts.map((contact: ResearchContact, index: number) => (
@@ -217,6 +307,9 @@ export function ResearchCompanyCard({
               </div>
             </div>
           )}
+
+          {/* Clay Enrichment Loading Skeleton */}
+          {isLoadingClay && <ClayDataSkeleton />}
         </div>
       )}
     </div>
