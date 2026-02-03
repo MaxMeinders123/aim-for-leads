@@ -16,10 +16,11 @@ export default function Settings() {
   const navigate = useNavigate();
   const { user, integrations, setIntegrations, setUser } = useAppStore();
 
-  const [n8nUrl, setN8nUrl] = useState(integrations.n8n_webhook_url || '');
+  const [companyResearchUrl, setCompanyResearchUrl] = useState(integrations.company_research_webhook_url || '');
+  const [peopleResearchUrl, setPeopleResearchUrl] = useState(integrations.people_research_webhook_url || '');
   const [clayUrl, setClayUrl] = useState(integrations.clay_webhook_url || '');
   const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState<'n8n' | 'clay' | null>(null);
+  const [isTesting, setIsTesting] = useState<'company' | 'people' | 'clay' | null>(null);
 
   // Load integrations from Supabase
   useEffect(() => {
@@ -33,11 +34,18 @@ export default function Settings() {
         .single();
 
       if (data) {
-        setN8nUrl(data.n8n_webhook_url || '');
+        // Support both new and legacy fields
+        const companyUrl = data.company_research_webhook_url || data.n8n_webhook_url || '';
+        const peopleUrl = data.people_research_webhook_url || '';
+        
+        setCompanyResearchUrl(companyUrl);
+        setPeopleResearchUrl(peopleUrl);
         setClayUrl(data.clay_webhook_url || '');
         setIntegrations({
-          n8n_webhook_url: data.n8n_webhook_url || '',
+          company_research_webhook_url: companyUrl,
+          people_research_webhook_url: peopleUrl,
           clay_webhook_url: data.clay_webhook_url || '',
+          n8n_webhook_url: data.n8n_webhook_url || '',
           dark_mode: data.dark_mode || false,
           sound_effects: data.sound_effects !== false,
         });
@@ -55,7 +63,8 @@ export default function Settings() {
       const { error } = await supabase
         .from('user_integrations')
         .update({
-          n8n_webhook_url: n8nUrl || null,
+          company_research_webhook_url: companyResearchUrl || null,
+          people_research_webhook_url: peopleResearchUrl || null,
           clay_webhook_url: clayUrl || null,
           dark_mode: integrations.dark_mode,
           sound_effects: integrations.sound_effects,
@@ -65,7 +74,8 @@ export default function Settings() {
       if (error) throw error;
 
       setIntegrations({
-        n8n_webhook_url: n8nUrl,
+        company_research_webhook_url: companyResearchUrl,
+        people_research_webhook_url: peopleResearchUrl,
         clay_webhook_url: clayUrl,
       });
 
@@ -77,16 +87,21 @@ export default function Settings() {
     }
   };
 
-  const handleTestWebhook = async (type: 'n8n' | 'clay') => {
-    const url = type === 'n8n' ? n8nUrl : clayUrl;
+  const handleTestWebhook = async (type: 'company' | 'people' | 'clay') => {
+    const urlMap = {
+      company: companyResearchUrl,
+      people: peopleResearchUrl,
+      clay: clayUrl,
+    };
+    const url = urlMap[type];
+    
     if (!url) {
-      toast.error(`Please enter a ${type === 'n8n' ? 'n8n' : 'Clay'} webhook URL`);
+      toast.error(`Please enter a webhook URL`);
       return;
     }
 
     setIsTesting(type);
     try {
-      // Use edge function proxy to avoid CORS issues
       const { data, error } = await supabase.functions.invoke('test-webhook', {
         body: { url },
       });
@@ -94,7 +109,7 @@ export default function Settings() {
       if (error) throw error;
       if (!data.success) throw new Error(data.message || 'Webhook returned an error');
       
-      toast.success(`${type === 'n8n' ? 'n8n' : 'Clay'} webhook is working!`);
+      toast.success(`Webhook is working!`);
     } catch (error: any) {
       toast.error(`Test failed: ${error.message || 'Could not reach webhook'}`);
     } finally {
@@ -168,35 +183,71 @@ export default function Settings() {
               </div>
             </div>
 
-            {/* Integrations */}
+            {/* Research Webhooks */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Integrations
+                Research Webhooks
               </h3>
+              <p className="text-sm text-muted-foreground">
+                Configure the 3-step research flow: Company → People → Clay
+              </p>
 
               <div className="p-4 rounded-xl border border-border space-y-3">
-                <Label htmlFor="n8nUrl">n8n Webhook URL</Label>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</div>
+                  <Label htmlFor="companyUrl">Company Research Webhook (n8n)</Label>
+                </div>
+                <p className="text-xs text-muted-foreground ml-8">Validates company status, finds cloud preference</p>
                 <div className="flex gap-2">
                   <Input
-                    id="n8nUrl"
-                    value={n8nUrl}
-                    onChange={(e) => setN8nUrl(e.target.value)}
-                    placeholder="https://n8n.cloudar.com/webhook/..."
+                    id="companyUrl"
+                    value={companyResearchUrl}
+                    onChange={(e) => setCompanyResearchUrl(e.target.value)}
+                    placeholder="https://n8n.example.com/webhook/company-research"
                     className="h-10 rounded-lg flex-1"
                   />
                   <Button
                     variant="outline"
-                    onClick={() => handleTestWebhook('n8n')}
-                    disabled={isTesting === 'n8n'}
+                    onClick={() => handleTestWebhook('company')}
+                    disabled={isTesting === 'company'}
                     className="rounded-lg px-6"
                   >
-                    {isTesting === 'n8n' ? 'Testing...' : 'Test'}
+                    {isTesting === 'company' ? 'Testing...' : 'Test'}
                   </Button>
                 </div>
               </div>
 
               <div className="p-4 rounded-xl border border-border space-y-3">
-                <Label htmlFor="clayUrl">Clay Webhook URL</Label>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">2</div>
+                  <Label htmlFor="peopleUrl">People Research Webhook (n8n)</Label>
+                </div>
+                <p className="text-xs text-muted-foreground ml-8">Finds decision-makers and technical buyers</p>
+                <div className="flex gap-2">
+                  <Input
+                    id="peopleUrl"
+                    value={peopleResearchUrl}
+                    onChange={(e) => setPeopleResearchUrl(e.target.value)}
+                    placeholder="https://n8n.example.com/webhook/people-research"
+                    className="h-10 rounded-lg flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => handleTestWebhook('people')}
+                    disabled={isTesting === 'people'}
+                    className="rounded-lg px-6"
+                  >
+                    {isTesting === 'people' ? 'Testing...' : 'Test'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-border space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">3</div>
+                  <Label htmlFor="clayUrl">Clay Enrichment Webhook</Label>
+                </div>
+                <p className="text-xs text-muted-foreground ml-8">Enriches contacts with additional data</p>
                 <div className="flex gap-2">
                   <Input
                     id="clayUrl"

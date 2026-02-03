@@ -42,8 +42,11 @@ export interface Contact {
 }
 
 export interface UserIntegrations {
-  n8n_webhook_url?: string;
+  company_research_webhook_url?: string;
+  people_research_webhook_url?: string;
   clay_webhook_url?: string;
+  // Keep legacy field for backwards compatibility
+  n8n_webhook_url?: string;
   dark_mode: boolean;
   sound_effects: boolean;
 }
@@ -62,17 +65,55 @@ export interface CampaignDraft {
   pain_points: string;
 }
 
+// Company research result from first webhook
+export interface CompanyResearchResult {
+  status: string;
+  company: string;
+  company_status: 'Operating' | 'Acquired' | 'Bankrupt' | 'Not_Found';
+  acquiredBy?: string;
+  effectiveDate?: string;
+  cloud_preference?: {
+    provider: string;
+    confidence: number;
+    evidence_urls: string[];
+  };
+}
+
+// Contact from people research webhook
+export interface ResearchContact {
+  first_name: string;
+  last_name: string;
+  job_title: string;
+  title: string;
+  pitch_type: string;
+  linkedin: string;
+  priority: 'High' | 'Medium' | 'Low';
+  priority_reason: string;
+}
+
+// People research result from second webhook
+export interface PeopleResearchResult {
+  status: string;
+  company: string;
+  contacts: ResearchContact[];
+}
+
+export interface CompanyResearchProgress {
+  companyId: string;
+  companyName: string;
+  step: 'company' | 'people' | 'clay' | 'complete' | 'error';
+  companyData?: CompanyResearchResult;
+  peopleData?: PeopleResearchResult;
+  error?: string;
+}
+
 export interface ResearchProgress {
   isRunning: boolean;
   currentCompanyIndex: number;
   totalCompanies: number;
   currentCompany: string;
-  currentStep: 'company' | 'people' | 'linkedin' | 'enrich';
-  completedCompanies: {
-    name: string;
-    contactsFound: number;
-    contacts: { name: string; title: string }[];
-  }[];
+  currentStep: 'company' | 'people' | 'clay';
+  companiesProgress: CompanyResearchProgress[];
 }
 
 interface AppState {
@@ -112,6 +153,7 @@ interface AppState {
   // Research Progress
   researchProgress: ResearchProgress;
   setResearchProgress: (progress: Partial<ResearchProgress>) => void;
+  updateCompanyProgress: (companyId: string, update: Partial<CompanyResearchProgress>) => void;
   resetResearchProgress: () => void;
 
   // User Integrations
@@ -145,7 +187,7 @@ const initialResearchProgress: ResearchProgress = {
   totalCompanies: 0,
   currentCompany: '',
   currentStep: 'company',
-  completedCompanies: [],
+  companiesProgress: [],
 };
 
 export const useAppStore = create<AppState>((set) => ({
@@ -205,12 +247,22 @@ export const useAppStore = create<AppState>((set) => ({
   setResearchProgress: (progress) => set((state) => ({
     researchProgress: { ...state.researchProgress, ...progress },
   })),
+  updateCompanyProgress: (companyId, update) => set((state) => ({
+    researchProgress: {
+      ...state.researchProgress,
+      companiesProgress: state.researchProgress.companiesProgress.map((cp) =>
+        cp.companyId === companyId ? { ...cp, ...update } : cp
+      ),
+    },
+  })),
   resetResearchProgress: () => set({ researchProgress: initialResearchProgress }),
 
   // User Integrations
   integrations: {
-    n8n_webhook_url: '',
+    company_research_webhook_url: '',
+    people_research_webhook_url: '',
     clay_webhook_url: '',
+    n8n_webhook_url: '',
     dark_mode: false,
     sound_effects: true,
   },
