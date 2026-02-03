@@ -4,9 +4,51 @@ import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useAppStore } from '@/stores/appStore';
+import { useAppStore, Campaign, Company } from '@/stores/appStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+// Helper function to parse multi-line/comma-separated text into arrays
+const parseToArray = (text?: string): string[] => {
+  if (!text) return [];
+  return text
+    .split(/[\n,]/)
+    .map(item => item.trim())
+    .filter(item => item.length > 0);
+};
+
+// Derive pitch types from primary and secondary angles
+const derivePitchTypes = (campaign?: Campaign | null): string[] => {
+  if (!campaign) return [];
+  const angleText = `${campaign.primary_angle || ''} ${campaign.secondary_angle || ''}`;
+  const keywords = ['Security', 'AI', 'FinOps', 'Modernization', 'DevOps', 'Automation', 'Cloud', 'Optimization'];
+  return keywords.filter(keyword => 
+    angleText.toLowerCase().includes(keyword.toLowerCase())
+  );
+};
+
+// Build the structured payload for a single company
+const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
+  campaignName: campaign?.name || '',
+  painPoints: parseToArray(campaign?.pain_points),
+  primaryAngle: campaign?.primary_angle || '',
+  product: campaign?.product || '',
+  productCategory: campaign?.product_category || '',
+  secondaryAngle: campaign?.secondary_angle || '',
+  targetPersonas: parseToArray(campaign?.personas),
+  targetRegion: campaign?.target_region || '',
+  targetTitles: parseToArray(campaign?.job_titles),
+  targetVerticals: parseToArray(campaign?.target_verticals),
+  techFocus: campaign?.technical_focus || '',
+  qualify: true,
+  region: campaign?.target_region || '',
+  primaryPitchTypes: derivePitchTypes(campaign),
+  company: {
+    name: company.name,
+    website: company.website || '',
+    linkedin: company.linkedin_url || '',
+  },
+});
 
 export default function CompanyPreview() {
   const navigate = useNavigate();
@@ -47,26 +89,24 @@ export default function CompanyPreview() {
     });
 
     try {
-      // Send to n8n webhook
-      const response = await fetch(integrations.n8n_webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'research_start',
-          campaign_id: selectedCampaign?.id,
-          campaign: selectedCampaign,
-          companies: selectedCompanies.map((c) => ({
-            id: c.id,
-            name: c.name,
-            website: c.website,
-            linkedin_url: c.linkedin_url,
-          })),
-        }),
-      });
+      // Send individual requests for each company with structured payload
+      const requests = selectedCompanies.map((company) =>
+        fetch(integrations.n8n_webhook_url!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildCompanyPayload(selectedCampaign, company)),
+        })
+      );
 
-      if (!response.ok) throw new Error('Failed to start research');
+      const responses = await Promise.all(requests);
+      const failedCount = responses.filter((r) => !r.ok).length;
 
-      toast.success('Research started!');
+      if (failedCount > 0) {
+        toast.warning(`${failedCount} of ${selectedCompanies.length} requests failed`);
+      } else {
+        toast.success('Research started!');
+      }
+
       navigate('/research');
     } catch (error: any) {
       toast.error(error.message || 'Failed to start research');
