@@ -196,30 +196,36 @@ export type Database = {
       user_integrations: {
         Row: {
           clay_webhook_url: string | null
+          company_research_webhook_url: string | null
           created_at: string
           dark_mode: boolean | null
           id: string
           n8n_webhook_url: string | null
+          people_research_webhook_url: string | null
           sound_effects: boolean | null
           updated_at: string
           user_id: string
         }
         Insert: {
           clay_webhook_url?: string | null
+          company_research_webhook_url?: string | null
           created_at?: string
           dark_mode?: boolean | null
           id?: string
           n8n_webhook_url?: string | null
+          people_research_webhook_url?: string | null
           sound_effects?: boolean | null
           updated_at?: string
           user_id: string
         }
         Update: {
           clay_webhook_url?: string | null
+          company_research_webhook_url?: string | null
           created_at?: string
           dark_mode?: boolean | null
           id?: string
           n8n_webhook_url?: string | null
+          people_research_webhook_url?: string | null
           sound_effects?: boolean | null
           updated_at?: string
           user_id?: string

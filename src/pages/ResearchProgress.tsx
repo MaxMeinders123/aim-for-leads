@@ -1,19 +1,71 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Users, Linkedin, Mail, Check, Loader2 } from 'lucide-react';
+import { Building2, Users, Zap, Check, Loader2, AlertCircle, Cloud, ChevronDown, ChevronUp } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { useAppStore } from '@/stores/appStore';
-import { supabase } from '@/integrations/supabase/client';
+import { useAppStore, Campaign, Company, CompanyResearchResult, PeopleResearchResult } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { ResearchCompanyCard } from '@/components/research/ResearchCompanyCard';
+
+// Helper function to parse multi-line/comma-separated text into arrays
+const parseToArray = (text?: string): string[] => {
+  if (!text) return [];
+  return text
+    .split(/[\n,]/)
+    .map(item => item.trim())
+    .filter(item => item.length > 0);
+};
+
+// Build the structured payload for a single company
+const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
+  campaign: {
+    campaignName: campaign?.name || '',
+    product: campaign?.product || '',
+    productCategory: campaign?.product_category || '',
+    primaryAngle: campaign?.primary_angle || '',
+    secondaryAngle: campaign?.secondary_angle || '',
+    targetRegion: campaign?.target_region || '',
+    painPoints: parseToArray(campaign?.pain_points),
+    targetPersonas: parseToArray(campaign?.personas),
+    targetTitles: parseToArray(campaign?.job_titles),
+    targetVerticals: parseToArray(campaign?.target_verticals),
+    techFocus: campaign?.technical_focus || '',
+  },
+  company: {
+    name: company.name,
+    website: company.website || '',
+    linkedin: company.linkedin_url || '',
+  },
+});
+
+// Parse the AI response text to extract JSON
+const parseAIResponse = (responseData: any): any => {
+  try {
+    // Handle the nested structure from n8n
+    if (responseData?.output?.[0]?.content?.[0]?.text) {
+      const text = responseData.output[0].content[0].text;
+      return JSON.parse(text);
+    }
+    // Direct JSON response
+    if (typeof responseData === 'object') {
+      return responseData;
+    }
+    // Try parsing as string
+    return JSON.parse(responseData);
+  } catch (e) {
+    console.error('Failed to parse AI response:', e);
+    return null;
+  }
+};
 
 const researchSteps = [
-  { id: 'company', label: 'Company Research', icon: Building2 },
-  { id: 'people', label: 'People Research', icon: Users },
-  { id: 'linkedin', label: 'LinkedIn Check', icon: Linkedin },
-  { id: 'enrich', label: 'Enrich Data', icon: Mail },
+  { id: 'company', label: 'Company', icon: Building2 },
+  { id: 'people', label: 'People', icon: Users },
+  { id: 'clay', label: 'Enrich', icon: Zap },
 ];
 
 export default function ResearchProgress() {
@@ -21,91 +73,176 @@ export default function ResearchProgress() {
   const {
     researchProgress,
     setResearchProgress,
+    updateCompanyProgress,
     companies,
     selectedCampaign,
-    setContacts,
+    integrations,
   } = useAppStore();
 
   const {
     isRunning,
     currentCompanyIndex,
     totalCompanies,
-    currentCompany,
     currentStep,
-    completedCompanies,
+    companiesProgress,
   } = researchProgress;
 
+  const isProcessingRef = useRef(false);
+  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
+
   const progressPercentage = totalCompanies > 0
-    ? Math.round((currentCompanyIndex / totalCompanies) * 100)
+    ? Math.round(((companiesProgress.filter(c => c.step === 'complete').length) / totalCompanies) * 100)
     : 0;
 
-  // Poll for results (webhook callback will update contacts in Supabase)
-  useEffect(() => {
-    if (!isRunning || !selectedCampaign) return;
-
-    const pollInterval = setInterval(async () => {
-      const { data: contactsData, error } = await supabase
-        .from('contacts')
-        .select('*')
-        .eq('campaign_id', selectedCampaign.id);
-
-      if (error) return;
-
-      if (contactsData && contactsData.length > 0) {
-        // Research complete
-        setContacts(contactsData.map((c) => ({ 
-          ...c, 
-          priority: c.priority as 'high' | 'medium' | 'low',
-          selected: true 
-        })));
-        setResearchProgress({ isRunning: false });
-        clearInterval(pollInterval);
-        navigate('/results');
+  const toggleExpanded = (companyId: string) => {
+    setExpandedCompanies(prev => {
+      const next = new Set(prev);
+      if (next.has(companyId)) {
+        next.delete(companyId);
+      } else {
+        next.add(companyId);
       }
-    }, 5000);
+      return next;
+    });
+  };
 
-    // Simulate progress for demo (in production, n8n would send progress updates)
-    const steps: Array<'company' | 'people' | 'linkedin' | 'enrich'> = ['company', 'people', 'linkedin', 'enrich'];
-    const progressInterval = setInterval(() => {
-      const currentStepIndex = steps.indexOf(currentStep);
-      
-      if (currentStepIndex < steps.length - 1) {
-        setResearchProgress({ currentStep: steps[currentStepIndex + 1] });
-      } else if (currentCompanyIndex < totalCompanies - 1) {
-        const selectedCompanies = companies.filter((c) => c.selected);
-        const nextIndex = currentCompanyIndex + 1;
-        setResearchProgress({
-          currentStep: 'company',
-          currentCompanyIndex: nextIndex,
-          currentCompany: selectedCompanies[nextIndex]?.name || '',
-          completedCompanies: [
-            ...completedCompanies,
-            {
-              name: currentCompany,
-              contactsFound: Math.floor(Math.random() * 5) + 1,
-              contacts: [],
-            },
-          ],
+  // Process companies sequentially through the 3 webhooks
+  const processCompanies = useCallback(async () => {
+    if (isProcessingRef.current || !isRunning) return;
+    isProcessingRef.current = true;
+
+    const selectedCompanies = companies.filter(c => c.selected);
+
+    for (let i = 0; i < selectedCompanies.length; i++) {
+      const company = selectedCompanies[i];
+      const payload = buildCompanyPayload(selectedCampaign, company);
+
+      setResearchProgress({
+        currentCompanyIndex: i,
+        currentCompany: company.name,
+      });
+
+      // Step 1: Company Research
+      setResearchProgress({ currentStep: 'company' });
+      updateCompanyProgress(company.id, { step: 'company' });
+
+      try {
+        const companyResponse = await fetch(integrations.company_research_webhook_url!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         });
-      }
-    }, 2000);
 
-    return () => {
-      clearInterval(pollInterval);
-      clearInterval(progressInterval);
-    };
-  }, [isRunning, selectedCampaign, companies, navigate, setContacts, setResearchProgress, currentStep, currentCompanyIndex, totalCompanies, currentCompany, completedCompanies]);
+        if (!companyResponse.ok) {
+          throw new Error(`Company research failed: ${companyResponse.status}`);
+        }
+
+        const companyData = await companyResponse.json();
+        const parsedCompanyData = parseAIResponse(companyData) as CompanyResearchResult;
+        
+        updateCompanyProgress(company.id, { 
+          step: 'people',
+          companyData: parsedCompanyData,
+        });
+
+        // Auto-expand current company to show results
+        setExpandedCompanies(prev => new Set(prev).add(company.id));
+
+      } catch (error: any) {
+        console.error('Company research error:', error);
+        updateCompanyProgress(company.id, { 
+          step: 'error',
+          error: error.message,
+        });
+        continue; // Skip to next company
+      }
+
+      // Step 2: People Research
+      setResearchProgress({ currentStep: 'people' });
+      
+      try {
+        const peopleResponse = await fetch(integrations.people_research_webhook_url!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!peopleResponse.ok) {
+          throw new Error(`People research failed: ${peopleResponse.status}`);
+        }
+
+        const peopleData = await peopleResponse.json();
+        const parsedPeopleData = parseAIResponse(peopleData) as PeopleResearchResult;
+        
+        updateCompanyProgress(company.id, { 
+          step: 'clay',
+          peopleData: parsedPeopleData,
+        });
+
+      } catch (error: any) {
+        console.error('People research error:', error);
+        updateCompanyProgress(company.id, { 
+          step: 'error',
+          error: error.message,
+        });
+        continue;
+      }
+
+      // Step 3: Clay Enrichment (if configured)
+      if (integrations.clay_webhook_url) {
+        setResearchProgress({ currentStep: 'clay' });
+        
+        try {
+          const clayResponse = await fetch(integrations.clay_webhook_url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (!clayResponse.ok) {
+            console.warn('Clay enrichment failed, continuing without enrichment');
+          }
+        } catch (error: any) {
+          console.warn('Clay enrichment error:', error);
+          // Don't fail the whole process for Clay errors
+        }
+      }
+
+      // Mark as complete
+      updateCompanyProgress(company.id, { step: 'complete' });
+    }
+
+    // All done
+    setResearchProgress({ isRunning: false });
+    isProcessingRef.current = false;
+    toast.success('Research complete!');
+    
+  }, [isRunning, companies, selectedCampaign, integrations, setResearchProgress, updateCompanyProgress]);
+
+  // Start processing when component mounts
+  useEffect(() => {
+    if (isRunning && !isProcessingRef.current) {
+      processCompanies();
+    }
+  }, [isRunning, processCompanies]);
 
   const handleStop = () => {
     setResearchProgress({ isRunning: false });
+    isProcessingRef.current = false;
     navigate('/company-preview');
   };
 
-  const getStepStatus = (stepId: string) => {
-    const steps = ['company', 'people', 'linkedin', 'enrich'];
-    const currentIndex = steps.indexOf(currentStep);
+  const handleViewResults = () => {
+    navigate('/results');
+  };
+
+  const getStepStatus = (stepId: string, companyStep: string) => {
+    const steps = ['company', 'people', 'clay', 'complete'];
+    const currentIndex = steps.indexOf(companyStep);
     const stepIndex = steps.indexOf(stepId);
 
+    if (companyStep === 'error') return 'error';
+    if (companyStep === 'complete') return 'completed';
     if (stepIndex < currentIndex) return 'completed';
     if (stepIndex === currentIndex) return 'current';
     return 'pending';
@@ -115,18 +252,24 @@ export default function ResearchProgress() {
     <AppLayout>
       <div className="flex flex-col h-full">
         <PageHeader
-          title="Researching..."
-          subtitle={`${currentCompanyIndex + 1} of ${totalCompanies}`}
+          title={isRunning ? "Researching..." : "Research Complete"}
+          subtitle={`${companiesProgress.filter(c => c.step === 'complete').length} of ${totalCompanies} companies`}
           actions={
-            <Button variant="outline" onClick={handleStop} className="rounded-lg">
-              Stop
-            </Button>
+            isRunning ? (
+              <Button variant="outline" onClick={handleStop} className="rounded-lg">
+                Stop
+              </Button>
+            ) : (
+              <Button onClick={handleViewResults} className="rounded-lg">
+                View Results
+              </Button>
+            )
           }
         />
 
         <div className="flex-1 overflow-auto px-6 py-6">
           {/* Progress Bar */}
-          <div className="mb-8 max-w-2xl">
+          <div className="mb-8 max-w-3xl">
             <div className="flex justify-between text-sm text-muted-foreground mb-2">
               <span>Progress</span>
               <span>{progressPercentage}%</span>
@@ -134,77 +277,30 @@ export default function ResearchProgress() {
             <Progress value={progressPercentage} className="h-2" />
           </div>
 
-          {/* Current Company */}
-          <div className="mb-8 max-w-2xl">
-            <h3 className="text-lg font-medium text-foreground mb-4">{currentCompany}</h3>
-            <div className="flex gap-4">
-              {researchSteps.map((step) => {
-                const status = getStepStatus(step.id);
-                return (
-                  <div
-                    key={step.id}
-                    className={cn(
-                      'flex items-center gap-2 px-4 py-2 rounded-full text-sm',
-                      status === 'completed' && 'bg-green-100 text-green-700',
-                      status === 'current' && 'bg-primary text-primary-foreground',
-                      status === 'pending' && 'bg-muted text-muted-foreground'
-                    )}
-                  >
-                    {status === 'completed' ? (
-                      <Check className="w-4 h-4" />
-                    ) : status === 'current' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <step.icon className="w-4 h-4" />
-                    )}
-                    <span>{step.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Completed Companies */}
-          <div className="space-y-2 max-w-2xl">
-            {completedCompanies.map((company, index) => (
-              <div
-                key={index}
-                className="p-4 rounded-xl border border-green-200 bg-green-50 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <Check className="w-5 h-5 text-green-600" />
-                  <span className="font-medium text-foreground">{company.name}</span>
+          {/* Step Legend */}
+          <div className="flex gap-4 mb-6 max-w-3xl">
+            {researchSteps.map((step, index) => (
+              <div key={step.id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
+                  {index + 1}
                 </div>
-                <span className="text-sm text-green-700">
-                  {company.contactsFound} contacts found
-                </span>
+                <step.icon className="w-4 h-4" />
+                <span>{step.label}</span>
               </div>
             ))}
+          </div>
 
-            {/* Current */}
-            {isRunning && (
-              <div className="p-4 rounded-xl border-2 border-primary bg-primary/5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                  <span className="font-medium text-foreground">{currentCompany}</span>
-                </div>
-                <span className="text-sm text-primary">Processing</span>
-              </div>
-            )}
-
-            {/* Pending */}
-            {companies
-              .filter((c) => c.selected)
-              .slice(currentCompanyIndex + 1)
-              .map((company) => (
-                <div
-                  key={company.id}
-                  className="p-4 rounded-xl border border-border bg-muted/30 flex items-center justify-between"
-                >
-                  <span className="font-medium text-muted-foreground">{company.name}</span>
-                  <span className="text-sm text-muted-foreground">Pending...</span>
-                </div>
-              ))}
+          {/* Companies Progress */}
+          <div className="space-y-3 max-w-3xl">
+            {companiesProgress.map((companyProgress) => (
+              <ResearchCompanyCard
+                key={companyProgress.companyId}
+                companyProgress={companyProgress}
+                isExpanded={expandedCompanies.has(companyProgress.companyId)}
+                onToggleExpand={() => toggleExpanded(companyProgress.companyId)}
+                getStepStatus={getStepStatus}
+              />
+            ))}
           </div>
         </div>
       </div>

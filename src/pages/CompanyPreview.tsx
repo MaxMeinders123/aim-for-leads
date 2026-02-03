@@ -4,7 +4,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useAppStore, Campaign, Company } from '@/stores/appStore';
+import { useAppStore, Campaign, Company, CompanyResearchProgress } from '@/stores/appStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -59,48 +59,39 @@ export default function CompanyPreview() {
       return;
     }
 
-    if (!integrations.n8n_webhook_url) {
-      toast.error('Please configure n8n Webhook URL in Settings');
+    // Check for required webhooks
+    if (!integrations.company_research_webhook_url) {
+      toast.error('Please configure Company Research Webhook in Settings');
+      navigate('/settings');
+      return;
+    }
+
+    if (!integrations.people_research_webhook_url) {
+      toast.error('Please configure People Research Webhook in Settings');
       navigate('/settings');
       return;
     }
 
     const selectedCompanies = companies.filter((c) => c.selected);
 
-    // Initialize research progress
+    // Initialize research progress with all companies
+    const companiesProgress: CompanyResearchProgress[] = selectedCompanies.map((company) => ({
+      companyId: company.id,
+      companyName: company.name,
+      step: 'company' as const,
+    }));
+
     setResearchProgress({
       isRunning: true,
       currentCompanyIndex: 0,
       totalCompanies: selectedCompanies.length,
       currentCompany: selectedCompanies[0]?.name || '',
       currentStep: 'company',
-      completedCompanies: [],
+      companiesProgress,
     });
 
-    try {
-      // Send individual requests for each company with structured payload
-      const requests = selectedCompanies.map((company) =>
-        fetch(integrations.n8n_webhook_url!, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildCompanyPayload(selectedCampaign, company)),
-        })
-      );
-
-      const responses = await Promise.all(requests);
-      const failedCount = responses.filter((r) => !r.ok).length;
-
-      if (failedCount > 0) {
-        toast.warning(`${failedCount} of ${selectedCompanies.length} requests failed`);
-      } else {
-        toast.success('Research started!');
-      }
-
-      navigate('/research');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to start research');
-      setResearchProgress({ isRunning: false });
-    }
+    // Navigate to research page - the actual webhook calls happen there
+    navigate('/research');
   };
 
   return (
