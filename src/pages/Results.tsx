@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, RefreshCw, Users, Mail, ChevronDown, Copy, ExternalLink } from 'lucide-react';
+import { Download, RefreshCw, Users, Mail, ChevronDown, Copy, ExternalLink, Cloud, Loader2 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,8 @@ export default function Results() {
   const enrichedPercent = contacts.length > 0
     ? Math.round((emailCount / contacts.length) * 100)
     : 0;
+
+  const [sendingToSalesforce, setSendingToSalesforce] = useState<string | null>(null);
 
   // Group contacts by company
   const contactsByCompany = useMemo(() => {
@@ -117,6 +119,41 @@ export default function Results() {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success('Copied to clipboard');
+  };
+
+  const handleAddToSalesforce = async (contact: typeof contacts[0]) => {
+    if (!integrations.salesforce_webhook_url) {
+      toast.error('Please configure Salesforce Webhook URL in Settings');
+      navigate('/settings');
+      return;
+    }
+
+    setSendingToSalesforce(contact.id);
+    try {
+      const response = await fetch(integrations.salesforce_webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'add_to_salesforce',
+          contact: {
+            name: contact.name,
+            title: contact.title,
+            company_name: contact.company_name,
+            email: contact.email,
+            phone: contact.phone,
+            linkedin_url: contact.linkedin_url,
+            priority: contact.priority,
+          },
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to send to Salesforce');
+      toast.success(`Added ${contact.name} to Salesforce`);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add to Salesforce');
+    } finally {
+      setSendingToSalesforce(null);
+    }
   };
 
   const getPriorityColor = (priority: string) => {
@@ -245,6 +282,20 @@ export default function Results() {
                           )}
                         </div>
                       </div>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleAddToSalesforce(contact)}
+                        disabled={sendingToSalesforce === contact.id}
+                        className="shrink-0 h-9 w-9 rounded-lg hover:bg-blue-50 hover:border-blue-300"
+                        title="Add to Salesforce"
+                      >
+                        {sendingToSalesforce === contact.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Cloud className="w-4 h-4 text-blue-600" />
+                        )}
+                      </Button>
                     </div>
                   ))}
                 </CollapsibleContent>
