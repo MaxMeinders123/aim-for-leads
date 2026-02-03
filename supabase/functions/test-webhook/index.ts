@@ -21,6 +21,19 @@ serve(async (req) => {
       );
     }
 
+    // Validate URL format
+    try {
+      const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        throw new Error('Invalid protocol');
+      }
+    } catch {
+      return new Response(
+        JSON.stringify({ error: `Invalid URL: '${url}'` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Make the request to the webhook from the server (no CORS issues)
     const response = await fetch(url, {
       method: "POST",
