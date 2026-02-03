@@ -54,13 +54,13 @@ export default function Settings() {
     try {
       const { error } = await supabase
         .from('user_integrations')
-        .upsert({
-          user_id: user.id,
+        .update({
           n8n_webhook_url: n8nUrl || null,
           clay_webhook_url: clayUrl || null,
           dark_mode: integrations.dark_mode,
           sound_effects: integrations.sound_effects,
-        });
+        })
+        .eq('user_id', user.id);
 
       if (error) throw error;
 
