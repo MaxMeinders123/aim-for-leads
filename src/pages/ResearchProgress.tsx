@@ -192,9 +192,9 @@ export default function ResearchProgress() {
       updateCompanyProgress(companyId, { step: 'people', error: undefined });
       
       try {
-        // 10 minute timeout for people research (takes 5-10 min)
+        // 15 minute timeout for people research (can take up to 10+ min)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 600000);
+        const timeoutId = setTimeout(() => controller.abort(), 900000);
         
         const response = await fetch(integrations.people_research_webhook_url!, {
           method: 'POST',
@@ -217,7 +217,7 @@ export default function ResearchProgress() {
         updateCompanyProgress(companyId, { step: 'clay', peopleData: parsedData || undefined });
         toast.success(`People research complete for ${company.name}`);
       } catch (error: any) {
-        const errorMsg = error.name === 'AbortError' ? 'Request timed out (10 min)' : error.message;
+        const errorMsg = error.name === 'AbortError' ? 'Request timed out (15 min)' : error.message;
         updateCompanyProgress(companyId, { step: 'error', error: errorMsg });
         toast.error(`Failed: ${errorMsg}`);
       }
@@ -321,9 +321,9 @@ export default function ResearchProgress() {
       setResearchProgress({ currentStep: 'people' });
       
       try {
-        // 10 minute timeout for people research (takes 5-10 min)
+        // 15 minute timeout for people research (can take up to 10+ min)
         const peopleController = new AbortController();
-        const peopleTimeoutId = setTimeout(() => peopleController.abort(), 600000);
+        const peopleTimeoutId = setTimeout(() => peopleController.abort(), 900000);
         
         console.log(`[Research] Sending people webhook request...`);
         const peopleResponse = await fetch(integrations.people_research_webhook_url!, {
@@ -366,7 +366,7 @@ export default function ResearchProgress() {
 
       } catch (error: any) {
         console.error('[Research] People research error:', error);
-        const errorMsg = error.name === 'AbortError' ? 'Request timed out (10 min)' : error.message;
+        const errorMsg = error.name === 'AbortError' ? 'Request timed out (15 min)' : error.message;
         updateCompanyProgress(company.id, { 
           step: 'error',
           error: errorMsg,
