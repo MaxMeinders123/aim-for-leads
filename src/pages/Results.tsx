@@ -122,15 +122,15 @@ export default function Results() {
   };
 
   const handleAddToSalesforce = async (contact: typeof contacts[0]) => {
-    if (!integrations.salesforce_webhook_url) {
-      toast.error('Please configure Salesforce Webhook URL in Settings');
+    if (!integrations.clay_webhook_url) {
+      toast.error('Please configure Clay Webhook URL in Settings');
       navigate('/settings');
       return;
     }
 
     setSendingToSalesforce(contact.id);
     try {
-      const response = await fetch(integrations.salesforce_webhook_url, {
+      const response = await fetch(integrations.clay_webhook_url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -147,10 +147,10 @@ export default function Results() {
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to send to Salesforce');
-      toast.success(`Added ${contact.name} to Salesforce`);
+      if (!response.ok) throw new Error('Failed to send to Clay');
+      toast.success(`Sent ${contact.name} to Clay for Salesforce`);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to add to Salesforce');
+      toast.error(error.message || 'Failed to send to Clay');
     } finally {
       setSendingToSalesforce(null);
     }
