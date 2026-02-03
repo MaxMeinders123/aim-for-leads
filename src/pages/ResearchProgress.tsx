@@ -353,6 +353,13 @@ export default function ResearchProgress() {
         console.log(`[Research] Sending people webhook request via proxy...`);
         const peopleData = await callWebhookProxy(integrations.people_research_webhook_url!, peoplePayload);
         console.log(`[Research] People response received:`, peopleData);
+
+        // Async mode: n8n responds immediately, then posts results back later
+        if (peopleData?.status === 'processing' || peopleData?.status === 'accepted') {
+          updateCompanyProgress(company.id, { step: 'awaiting_callback', error: undefined });
+          // Continue to next company; completion will come via callback insert
+          continue;
+        }
         
         // Parse and store the response
         const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
@@ -367,9 +374,14 @@ export default function ResearchProgress() {
 
       } catch (error: any) {
         console.error('[Research] People research error:', error);
+
+        const msg = String(error?.message || 'Failed to fetch');
+        const isTimeout = msg.includes('524') || msg.includes('504') || msg.toLowerCase().includes('timeout');
         updateCompanyProgress(company.id, { 
           step: 'error',
-          error: error.message,
+          error: isTimeout
+            ? 'Timed out waiting for People Research. This step is too long for a single request—use async callback (respond immediately + POST results back) or shorten the workflow.'
+            : msg,
         });
         continue;
       }
