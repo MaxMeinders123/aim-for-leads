@@ -225,7 +225,7 @@ export default function ResearchProgress() {
 
   }, [companies, selectedCampaign, integrations, updateCompanyProgress]);
 
-  // Process companies sequentially through the 3 webhooks
+  // Process companies sequentially: Company Research → People Research
   const processCompanies = useCallback(async () => {
     if (isProcessingRef.current || !isRunning) return;
     isProcessingRef.current = true;
@@ -236,20 +236,27 @@ export default function ResearchProgress() {
       const company = selectedCompanies[i];
       const payload = buildCompanyPayload(selectedCampaign, company);
 
+      console.log(`[Research] Starting company ${i + 1}/${selectedCompanies.length}: ${company.name}`);
+
       setResearchProgress({
         currentCompanyIndex: i,
         currentCompany: company.name,
       });
 
-      // Step 1: Company Research
+      // ========== STEP 1: Company Research ==========
+      console.log(`[Research] Step 1: Company research for ${company.name}`);
       setResearchProgress({ currentStep: 'company' });
       updateCompanyProgress(company.id, { step: 'company' });
+
+      let companyResearchSuccess = false;
+      let parsedCompanyData: CompanyResearchResult | null = null;
 
       try {
         // 3 minute timeout for company research
         const companyController = new AbortController();
         const companyTimeoutId = setTimeout(() => companyController.abort(), 180000);
         
+        console.log(`[Research] Sending company webhook request...`);
         const companyResponse = await fetch(integrations.company_research_webhook_url!, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -258,24 +265,30 @@ export default function ResearchProgress() {
         });
         
         clearTimeout(companyTimeoutId);
+        console.log(`[Research] Company webhook response status: ${companyResponse.status}`);
 
         if (!companyResponse.ok) {
           throw new Error(`Company research failed: ${companyResponse.status}`);
         }
 
-        // Handle empty or non-JSON responses
+        // Wait for full response text
         const responseText = await companyResponse.text();
+        console.log(`[Research] Company response received, length: ${responseText?.length || 0} chars`);
+        
         let companyData = null;
         if (responseText && responseText.trim()) {
           try {
             companyData = JSON.parse(responseText);
+            console.log(`[Research] Company JSON parsed successfully`);
           } catch (e) {
-            console.warn('Company response is not valid JSON:', responseText.substring(0, 100));
+            console.warn('[Research] Company response is not valid JSON:', responseText.substring(0, 200));
           }
         }
         
-        const parsedCompanyData = companyData ? parseAIResponse(companyData) as CompanyResearchResult : null;
+        parsedCompanyData = companyData ? parseAIResponse(companyData) as CompanyResearchResult : null;
+        console.log(`[Research] Company data parsed:`, parsedCompanyData ? 'success' : 'null');
         
+        // Update state with company data BEFORE moving to people step
         updateCompanyProgress(company.id, { 
           step: 'people',
           companyData: parsedCompanyData || undefined,
@@ -283,18 +296,28 @@ export default function ResearchProgress() {
 
         // Auto-expand current company to show results
         setExpandedCompanies(prev => new Set(prev).add(company.id));
+        
+        companyResearchSuccess = true;
+        console.log(`[Research] Company research complete for ${company.name}, proceeding to people research`);
 
       } catch (error: any) {
-        console.error('Company research error:', error);
+        console.error('[Research] Company research error:', error);
         const errorMsg = error.name === 'AbortError' ? 'Request timed out (3 min)' : error.message;
         updateCompanyProgress(company.id, { 
           step: 'error',
           error: errorMsg,
         });
-        continue; // Skip to next company
+        continue; // Skip to next company - don't proceed to people research
       }
 
-      // Step 2: People Research
+      // Only proceed to people research if company research succeeded
+      if (!companyResearchSuccess) {
+        console.log(`[Research] Company research failed, skipping people research for ${company.name}`);
+        continue;
+      }
+
+      // ========== STEP 2: People Research ==========
+      console.log(`[Research] Step 2: People research for ${company.name}`);
       setResearchProgress({ currentStep: 'people' });
       
       try {
@@ -302,6 +325,7 @@ export default function ResearchProgress() {
         const peopleController = new AbortController();
         const peopleTimeoutId = setTimeout(() => peopleController.abort(), 600000);
         
+        console.log(`[Research] Sending people webhook request...`);
         const peopleResponse = await fetch(integrations.people_research_webhook_url!, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -310,31 +334,38 @@ export default function ResearchProgress() {
         });
         
         clearTimeout(peopleTimeoutId);
+        console.log(`[Research] People webhook response status: ${peopleResponse.status}`);
 
         if (!peopleResponse.ok) {
           throw new Error(`People research failed: ${peopleResponse.status}`);
         }
 
-        // Handle empty or non-JSON responses
+        // Wait for full response text
         const peopleText = await peopleResponse.text();
+        console.log(`[Research] People response received, length: ${peopleText?.length || 0} chars`);
+        
         let peopleData = null;
         if (peopleText && peopleText.trim()) {
           try {
             peopleData = JSON.parse(peopleText);
+            console.log(`[Research] People JSON parsed successfully`);
           } catch (e) {
-            console.warn('People response is not valid JSON:', peopleText.substring(0, 100));
+            console.warn('[Research] People response is not valid JSON:', peopleText.substring(0, 200));
           }
         }
         
         const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
+        console.log(`[Research] People data parsed:`, parsedPeopleData ? 'success' : 'null');
         
         updateCompanyProgress(company.id, { 
           step: 'complete',
           peopleData: parsedPeopleData || undefined,
         });
+        
+        console.log(`[Research] Completed all research for ${company.name}`);
 
       } catch (error: any) {
-        console.error('People research error:', error);
+        console.error('[Research] People research error:', error);
         const errorMsg = error.name === 'AbortError' ? 'Request timed out (10 min)' : error.message;
         updateCompanyProgress(company.id, { 
           step: 'error',
@@ -345,6 +376,7 @@ export default function ResearchProgress() {
     }
 
     // All done
+    console.log(`[Research] All companies completed`);
     setResearchProgress({ isRunning: false });
     isProcessingRef.current = false;
     toast.success('Research complete!');
