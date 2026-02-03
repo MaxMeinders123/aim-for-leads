@@ -13,16 +13,42 @@ import { ResearchCompanyCard } from '@/components/research/ResearchCompanyCard';
 import { supabase } from '@/integrations/supabase/client';
 
 // Call webhook via edge function proxy to avoid CORS
+// Uses AbortController with extended timeout for long-running AI research
 const callWebhookProxy = async (webhookUrl: string, payload: any) => {
-  const { data, error } = await supabase.functions.invoke('research-proxy', {
-    body: { webhookUrl, payload },
-  });
+  // 20 minute timeout for the fetch call itself
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 1200000); // 20 min
   
-  if (error) {
-    throw new Error(error.message || 'Proxy request failed');
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/research-proxy`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ webhookUrl, payload }),
+        signal: controller.signal,
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `Request failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out (20 min limit)');
+    }
+    throw error;
   }
-  
-  return data;
 };
 
 // Helper function to parse multi-line/comma-separated text into arrays
