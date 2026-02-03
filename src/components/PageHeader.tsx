@@ -12,7 +12,7 @@ interface PageHeaderProps {
 }
 
 export const PageHeader = forwardRef<HTMLDivElement, PageHeaderProps>(
-  ({ title, subtitle, backTo, onBack, actions }, ref) => {
+  function PageHeader({ title, subtitle, backTo, onBack, actions }, ref) {
     const navigate = useNavigate();
 
     const handleBack = () => {
@@ -25,27 +25,26 @@ export const PageHeader = forwardRef<HTMLDivElement, PageHeaderProps>(
 
     return (
       <div ref={ref} className="flex items-center justify-between px-6 py-4 border-b border-border">
-      <div className="flex items-center gap-3">
-        {(backTo || onBack) && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleBack}
-            className="w-8 h-8 rounded-lg"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </Button>
-        )}
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-          {subtitle && (
-            <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <div className="flex items-center gap-3">
+          {(backTo || onBack) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleBack}
+              className="w-8 h-8 rounded-lg"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
           )}
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+            {subtitle && (
+              <p className="text-sm text-muted-foreground">{subtitle}</p>
+            )}
+          </div>
         </div>
+        {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
-    </div>
-  );
-});
-
-PageHeader.displayName = 'PageHeader';
+    );
+  }
+);
