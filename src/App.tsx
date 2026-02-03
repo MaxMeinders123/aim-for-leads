@@ -22,7 +22,43 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener
+    // Check initial session immediately
+    const initSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+          email: session.user.email || '',
+        });
+
+        // Load integrations in background (don't block)
+        supabase
+          .from('user_integrations')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              setIntegrations({
+                n8n_webhook_url: data.n8n_webhook_url || '',
+                clay_webhook_url: data.clay_webhook_url || '',
+                dark_mode: data.dark_mode || false,
+                sound_effects: data.sound_effects !== false,
+              });
+              if (data.dark_mode) {
+                document.documentElement.classList.add('dark');
+              }
+            }
+          });
+      }
+      setIsLoading(false);
+    };
+
+    initSession();
+
+    // Set up auth state listener for subsequent changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
@@ -31,36 +67,11 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
             name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
             email: session.user.email || '',
           });
-
-          // Load integrations
-          const { data } = await supabase
-            .from('user_integrations')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .single();
-
-          if (data) {
-            setIntegrations({
-              n8n_webhook_url: data.n8n_webhook_url || '',
-              clay_webhook_url: data.clay_webhook_url || '',
-              dark_mode: data.dark_mode || false,
-              sound_effects: data.sound_effects !== false,
-            });
-
-            // Apply dark mode
-            if (data.dark_mode) {
-              document.documentElement.classList.add('dark');
-            }
-          }
         } else {
           setUser(null);
         }
-        setIsLoading(false);
       }
     );
-
-    // Check initial session
-    supabase.auth.getSession();
 
     return () => {
       subscription.unsubscribe();
