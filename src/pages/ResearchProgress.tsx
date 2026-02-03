@@ -20,13 +20,21 @@ const callWebhookProxy = async (webhookUrl: string, payload: any) => {
   const timeoutId = setTimeout(() => controller.abort(), 1200000); // 20 min
   
   try {
+    // Use the logged-in user's session JWT when available; fall back to the public key.
+    // (The gateway may reject requests without apikey/authorization before the function runs.)
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/research-proxy`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          // Required by the gateway
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          // Prefer user session token; anon/public key is a valid JWT for some configs
+          'Authorization': `Bearer ${accessToken ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({ webhookUrl, payload }),
         signal: controller.signal,
