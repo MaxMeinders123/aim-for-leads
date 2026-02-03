@@ -10,6 +10,20 @@ import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ResearchCompanyCard } from '@/components/research/ResearchCompanyCard';
+import { supabase } from '@/integrations/supabase/client';
+
+// Call webhook via edge function proxy to avoid CORS
+const callWebhookProxy = async (webhookUrl: string, payload: any) => {
+  const { data, error } = await supabase.functions.invoke('research-proxy', {
+    body: { webhookUrl, payload },
+  });
+  
+  if (error) {
+    throw new Error(error.message || 'Proxy request failed');
+  }
+  
+  return data;
+};
 
 // Helper function to parse multi-line/comma-separated text into arrays
 const parseToArray = (text?: string): string[] => {
@@ -157,34 +171,15 @@ export default function ResearchProgress() {
       updateCompanyProgress(companyId, { step: 'company', error: undefined });
       
       try {
-        // 3 minute timeout for company research
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 180000);
-        
-        const response = await fetch(integrations.company_research_webhook_url!, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error(`Company research failed: ${response.status}`);
-
-        const responseText = await response.text();
-        let data = null;
-        if (responseText?.trim()) {
-          try { data = JSON.parse(responseText); } catch (e) { console.warn('Not valid JSON'); }
-        }
+        console.log(`[Retry] Company research for ${company.name}`);
+        const data = await callWebhookProxy(integrations.company_research_webhook_url!, payload);
         
         const parsedData = data ? parseAIResponse(data) as CompanyResearchResult : null;
         updateCompanyProgress(companyId, { step: 'people', companyData: parsedData || undefined });
         toast.success(`Company research complete for ${company.name}`);
       } catch (error: any) {
-        const errorMsg = error.name === 'AbortError' ? 'Request timed out (3 min)' : error.message;
-        updateCompanyProgress(companyId, { step: 'error', error: errorMsg });
-        toast.error(`Failed: ${errorMsg}`);
+        updateCompanyProgress(companyId, { step: 'error', error: error.message });
+        toast.error(`Failed: ${error.message}`);
       }
     }
 
@@ -192,34 +187,15 @@ export default function ResearchProgress() {
       updateCompanyProgress(companyId, { step: 'people', error: undefined });
       
       try {
-        // 15 minute timeout for people research (can take up to 10+ min)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 900000);
-        
-        const response = await fetch(integrations.people_research_webhook_url!, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error(`People research failed: ${response.status}`);
-
-        const responseText = await response.text();
-        let data = null;
-        if (responseText?.trim()) {
-          try { data = JSON.parse(responseText); } catch (e) { console.warn('Not valid JSON'); }
-        }
+        console.log(`[Retry] People research for ${company.name}`);
+        const data = await callWebhookProxy(integrations.people_research_webhook_url!, payload);
         
         const parsedData = data ? parseAIResponse(data) as PeopleResearchResult : null;
-        updateCompanyProgress(companyId, { step: 'clay', peopleData: parsedData || undefined });
+        updateCompanyProgress(companyId, { step: 'complete', peopleData: parsedData || undefined });
         toast.success(`People research complete for ${company.name}`);
       } catch (error: any) {
-        const errorMsg = error.name === 'AbortError' ? 'Request timed out (15 min)' : error.message;
-        updateCompanyProgress(companyId, { step: 'error', error: errorMsg });
-        toast.error(`Failed: ${errorMsg}`);
+        updateCompanyProgress(companyId, { step: 'error', error: error.message });
+        toast.error(`Failed: ${error.message}`);
       }
     }
 
@@ -252,38 +228,9 @@ export default function ResearchProgress() {
       let parsedCompanyData: CompanyResearchResult | null = null;
 
       try {
-        // 3 minute timeout for company research
-        const companyController = new AbortController();
-        const companyTimeoutId = setTimeout(() => companyController.abort(), 180000);
-        
-        console.log(`[Research] Sending company webhook request...`);
-        const companyResponse = await fetch(integrations.company_research_webhook_url!, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: companyController.signal,
-        });
-        
-        clearTimeout(companyTimeoutId);
-        console.log(`[Research] Company webhook response status: ${companyResponse.status}`);
-
-        if (!companyResponse.ok) {
-          throw new Error(`Company research failed: ${companyResponse.status}`);
-        }
-
-        // Wait for full response text
-        const responseText = await companyResponse.text();
-        console.log(`[Research] Company response received, length: ${responseText?.length || 0} chars`);
-        
-        let companyData = null;
-        if (responseText && responseText.trim()) {
-          try {
-            companyData = JSON.parse(responseText);
-            console.log(`[Research] Company JSON parsed successfully`);
-          } catch (e) {
-            console.warn('[Research] Company response is not valid JSON:', responseText.substring(0, 200));
-          }
-        }
+        console.log(`[Research] Sending company webhook request via proxy...`);
+        const companyData = await callWebhookProxy(integrations.company_research_webhook_url!, payload);
+        console.log(`[Research] Company response received`);
         
         parsedCompanyData = companyData ? parseAIResponse(companyData) as CompanyResearchResult : null;
         console.log(`[Research] Company data parsed:`, parsedCompanyData ? 'success' : 'null');
@@ -302,10 +249,9 @@ export default function ResearchProgress() {
 
       } catch (error: any) {
         console.error('[Research] Company research error:', error);
-        const errorMsg = error.name === 'AbortError' ? 'Request timed out (3 min)' : error.message;
         updateCompanyProgress(company.id, { 
           step: 'error',
-          error: errorMsg,
+          error: error.message,
         });
         continue; // Skip to next company - don't proceed to people research
       }
@@ -321,38 +267,9 @@ export default function ResearchProgress() {
       setResearchProgress({ currentStep: 'people' });
       
       try {
-        // 15 minute timeout for people research (can take up to 10+ min)
-        const peopleController = new AbortController();
-        const peopleTimeoutId = setTimeout(() => peopleController.abort(), 900000);
-        
-        console.log(`[Research] Sending people webhook request...`);
-        const peopleResponse = await fetch(integrations.people_research_webhook_url!, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: peopleController.signal,
-        });
-        
-        clearTimeout(peopleTimeoutId);
-        console.log(`[Research] People webhook response status: ${peopleResponse.status}`);
-
-        if (!peopleResponse.ok) {
-          throw new Error(`People research failed: ${peopleResponse.status}`);
-        }
-
-        // Wait for full response text
-        const peopleText = await peopleResponse.text();
-        console.log(`[Research] People response received, length: ${peopleText?.length || 0} chars`);
-        
-        let peopleData = null;
-        if (peopleText && peopleText.trim()) {
-          try {
-            peopleData = JSON.parse(peopleText);
-            console.log(`[Research] People JSON parsed successfully`);
-          } catch (e) {
-            console.warn('[Research] People response is not valid JSON:', peopleText.substring(0, 200));
-          }
-        }
+        console.log(`[Research] Sending people webhook request via proxy...`);
+        const peopleData = await callWebhookProxy(integrations.people_research_webhook_url!, payload);
+        console.log(`[Research] People response received`);
         
         const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
         console.log(`[Research] People data parsed:`, parsedPeopleData ? 'success' : 'null');
@@ -366,10 +283,9 @@ export default function ResearchProgress() {
 
       } catch (error: any) {
         console.error('[Research] People research error:', error);
-        const errorMsg = error.name === 'AbortError' ? 'Request timed out (15 min)' : error.message;
         updateCompanyProgress(company.id, { 
           step: 'error',
-          error: errorMsg,
+          error: error.message,
         });
         continue;
       }
