@@ -45,7 +45,7 @@ const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
 // Parse the AI response text to extract JSON
 const parseAIResponse = (responseData: any): any => {
   try {
-    // Handle the nested structure from n8n with markdown code blocks
+    // Handle the nested structure from n8n with output_text content
     if (responseData?.output?.[0]?.content?.[0]?.text) {
       let text = responseData.output[0].content[0].text;
       
@@ -55,20 +55,34 @@ const parseAIResponse = (responseData: any): any => {
         text = jsonMatch[1].trim();
       }
       
-      return JSON.parse(text);
+      // Try parsing the text directly (it might be JSON without markdown wrapping)
+      try {
+        return JSON.parse(text);
+      } catch {
+        // If parsing fails, return the text as-is for debugging
+        console.warn('Could not parse nested text as JSON:', text.substring(0, 200));
+        return null;
+      }
     }
     
-    // Handle array response (first element)
-    if (Array.isArray(responseData) && responseData[0]?.output) {
+    // Handle array response (first element) - common n8n wrapper
+    if (Array.isArray(responseData) && responseData.length > 0) {
+      // Check if first element has output structure
+      if (responseData[0]?.output) {
+        return parseAIResponse(responseData[0]);
+      }
+      // Some n8n responses return array of results directly
       return parseAIResponse(responseData[0]);
     }
     
-    // Direct JSON response with the expected fields
-    if (typeof responseData === 'object' && (responseData.status || responseData.company_status)) {
-      return responseData;
+    // Direct JSON response with the expected fields (status, contacts, company_status)
+    if (typeof responseData === 'object' && responseData !== null) {
+      if (responseData.status || responseData.company_status || responseData.contacts) {
+        return responseData;
+      }
     }
     
-    // Try parsing as string
+    // Try parsing as string (raw JSON string response)
     if (typeof responseData === 'string') {
       // Strip markdown code blocks if present
       const jsonMatch = responseData.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -78,6 +92,7 @@ const parseAIResponse = (responseData: any): any => {
       return JSON.parse(responseData);
     }
     
+    console.warn('Unknown response format:', responseData);
     return responseData;
   } catch (e) {
     console.error('Failed to parse AI response:', e, responseData);
