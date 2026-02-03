@@ -129,6 +129,97 @@ export default function ResearchProgress() {
     });
   };
 
+  // Retry a specific step for a company
+  const retryStep = useCallback(async (companyId: string, stepToRetry: 'company' | 'people' | 'clay') => {
+    const company = companies.find(c => c.id === companyId);
+    if (!company) return;
+
+    const payload = buildCompanyPayload(selectedCampaign, company);
+    
+    // Expand the company card to show progress
+    setExpandedCompanies(prev => new Set(prev).add(companyId));
+
+    if (stepToRetry === 'company') {
+      updateCompanyProgress(companyId, { step: 'company', error: undefined });
+      
+      try {
+        const response = await fetch(integrations.company_research_webhook_url!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) throw new Error(`Company research failed: ${response.status}`);
+
+        const responseText = await response.text();
+        let data = null;
+        if (responseText?.trim()) {
+          try { data = JSON.parse(responseText); } catch (e) { console.warn('Not valid JSON'); }
+        }
+        
+        const parsedData = data ? parseAIResponse(data) as CompanyResearchResult : null;
+        updateCompanyProgress(companyId, { step: 'people', companyData: parsedData || undefined });
+        toast.success(`Company research complete for ${company.name}`);
+      } catch (error: any) {
+        updateCompanyProgress(companyId, { step: 'error', error: error.message });
+        toast.error(`Failed: ${error.message}`);
+      }
+    }
+
+    if (stepToRetry === 'people') {
+      updateCompanyProgress(companyId, { step: 'people', error: undefined });
+      
+      try {
+        const response = await fetch(integrations.people_research_webhook_url!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) throw new Error(`People research failed: ${response.status}`);
+
+        const responseText = await response.text();
+        let data = null;
+        if (responseText?.trim()) {
+          try { data = JSON.parse(responseText); } catch (e) { console.warn('Not valid JSON'); }
+        }
+        
+        const parsedData = data ? parseAIResponse(data) as PeopleResearchResult : null;
+        updateCompanyProgress(companyId, { step: 'clay', peopleData: parsedData || undefined });
+        toast.success(`People research complete for ${company.name}`);
+      } catch (error: any) {
+        updateCompanyProgress(companyId, { step: 'error', error: error.message });
+        toast.error(`Failed: ${error.message}`);
+      }
+    }
+
+    if (stepToRetry === 'clay') {
+      updateCompanyProgress(companyId, { step: 'clay', error: undefined });
+      
+      try {
+        if (!integrations.clay_webhook_url) {
+          updateCompanyProgress(companyId, { step: 'complete' });
+          toast.success(`Skipped Clay (not configured) - ${company.name} complete`);
+          return;
+        }
+
+        const response = await fetch(integrations.clay_webhook_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) throw new Error(`Clay enrichment failed: ${response.status}`);
+        
+        updateCompanyProgress(companyId, { step: 'complete' });
+        toast.success(`Clay enrichment complete for ${company.name}`);
+      } catch (error: any) {
+        updateCompanyProgress(companyId, { step: 'error', error: error.message });
+        toast.error(`Failed: ${error.message}`);
+      }
+    }
+  }, [companies, selectedCampaign, integrations, updateCompanyProgress]);
+
   // Process companies sequentially through the 3 webhooks
   const processCompanies = useCallback(async () => {
     if (isProcessingRef.current || !isRunning) return;
@@ -342,6 +433,7 @@ export default function ResearchProgress() {
                 isExpanded={expandedCompanies.has(companyProgress.companyId)}
                 onToggleExpand={() => toggleExpanded(companyProgress.companyId)}
                 getStepStatus={getStepStatus}
+                onRetryStep={retryStep}
               />
             ))}
           </div>
