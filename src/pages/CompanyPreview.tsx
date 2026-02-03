@@ -17,32 +17,21 @@ const parseToArray = (text?: string): string[] => {
     .filter(item => item.length > 0);
 };
 
-// Derive pitch types from primary and secondary angles
-const derivePitchTypes = (campaign?: Campaign | null): string[] => {
-  if (!campaign) return [];
-  const angleText = `${campaign.primary_angle || ''} ${campaign.secondary_angle || ''}`;
-  const keywords = ['Security', 'AI', 'FinOps', 'Modernization', 'DevOps', 'Automation', 'Cloud', 'Optimization'];
-  return keywords.filter(keyword => 
-    angleText.toLowerCase().includes(keyword.toLowerCase())
-  );
-};
-
 // Build the structured payload for a single company
 const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
-  campaignName: campaign?.name || '',
-  painPoints: parseToArray(campaign?.pain_points),
-  primaryAngle: campaign?.primary_angle || '',
-  product: campaign?.product || '',
-  productCategory: campaign?.product_category || '',
-  secondaryAngle: campaign?.secondary_angle || '',
-  targetPersonas: parseToArray(campaign?.personas),
-  targetRegion: campaign?.target_region || '',
-  targetTitles: parseToArray(campaign?.job_titles),
-  targetVerticals: parseToArray(campaign?.target_verticals),
-  techFocus: campaign?.technical_focus || '',
-  qualify: true,
-  region: campaign?.target_region || '',
-  primaryPitchTypes: derivePitchTypes(campaign),
+  campaign: {
+    campaignName: campaign?.name || '',
+    product: campaign?.product || '',
+    productCategory: campaign?.product_category || '',
+    primaryAngle: campaign?.primary_angle || '',
+    secondaryAngle: campaign?.secondary_angle || '',
+    targetRegion: campaign?.target_region || '',
+    painPoints: parseToArray(campaign?.pain_points),
+    targetPersonas: parseToArray(campaign?.personas),
+    targetTitles: parseToArray(campaign?.job_titles),
+    targetVerticals: parseToArray(campaign?.target_verticals),
+    techFocus: campaign?.technical_focus || '',
+  },
   company: {
     name: company.name,
     website: company.website || '',
