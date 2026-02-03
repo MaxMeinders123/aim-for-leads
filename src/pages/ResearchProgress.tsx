@@ -137,12 +137,22 @@ export default function ResearchProgress() {
           throw new Error(`Company research failed: ${companyResponse.status}`);
         }
 
-        const companyData = await companyResponse.json();
-        const parsedCompanyData = parseAIResponse(companyData) as CompanyResearchResult;
+        // Handle empty or non-JSON responses
+        const responseText = await companyResponse.text();
+        let companyData = null;
+        if (responseText && responseText.trim()) {
+          try {
+            companyData = JSON.parse(responseText);
+          } catch (e) {
+            console.warn('Company response is not valid JSON:', responseText.substring(0, 100));
+          }
+        }
+        
+        const parsedCompanyData = companyData ? parseAIResponse(companyData) as CompanyResearchResult : null;
         
         updateCompanyProgress(company.id, { 
           step: 'people',
-          companyData: parsedCompanyData,
+          companyData: parsedCompanyData || undefined,
         });
 
         // Auto-expand current company to show results
@@ -171,12 +181,22 @@ export default function ResearchProgress() {
           throw new Error(`People research failed: ${peopleResponse.status}`);
         }
 
-        const peopleData = await peopleResponse.json();
-        const parsedPeopleData = parseAIResponse(peopleData) as PeopleResearchResult;
+        // Handle empty or non-JSON responses
+        const peopleText = await peopleResponse.text();
+        let peopleData = null;
+        if (peopleText && peopleText.trim()) {
+          try {
+            peopleData = JSON.parse(peopleText);
+          } catch (e) {
+            console.warn('People response is not valid JSON:', peopleText.substring(0, 100));
+          }
+        }
+        
+        const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
         
         updateCompanyProgress(company.id, { 
           step: 'clay',
-          peopleData: parsedPeopleData,
+          peopleData: parsedPeopleData || undefined,
         });
 
       } catch (error: any) {
