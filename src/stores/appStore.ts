@@ -102,7 +102,7 @@ export interface PeopleResearchResult {
 export interface CompanyResearchProgress {
   companyId: string;
   companyName: string;
-  step: 'company' | 'people' | 'clay' | 'complete' | 'error';
+  step: 'company' | 'people' | 'awaiting_callback' | 'clay' | 'complete' | 'error';
   companyData?: CompanyResearchResult;
   peopleData?: PeopleResearchResult;
   error?: string;

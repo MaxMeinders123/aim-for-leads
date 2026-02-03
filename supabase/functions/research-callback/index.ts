@@ -18,10 +18,65 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { event, campaign_id, contacts } = body;
+    const { event, campaign_id, company_id, contacts } = body;
 
+    console.log(`[research-callback] Received event: ${event}, campaign: ${campaign_id}, company: ${company_id}`);
+
+    // Handle people research complete (async callback from n8n)
+    if (event === "people_research_complete" && campaign_id && contacts) {
+      console.log(`[research-callback] Processing ${contacts.length} contacts for company ${company_id}`);
+      
+      // Map contacts from n8n format to database format
+      const contactsToInsert = contacts.map((contact: any) => ({
+        campaign_id,
+        company_id: company_id || null,
+        company_name: contact.company_name || contact.company || null,
+        name: contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
+        title: contact.title || contact.job_title || null,
+        email: contact.email || null,
+        phone: contact.phone || null,
+        linkedin_url: contact.linkedin_url || contact.linkedin || null,
+        priority: (contact.priority || "medium").toLowerCase(),
+      }));
+
+      const { data, error } = await supabase
+        .from("contacts")
+        .insert(contactsToInsert)
+        .select();
+
+      if (error) {
+        console.error("[research-callback] Error inserting contacts:", error);
+        return new Response(
+          JSON.stringify({ error: error.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log(`[research-callback] Successfully inserted ${data?.length || 0} contacts`);
+
+      // Update campaign contacts count
+      const { count } = await supabase
+        .from("contacts")
+        .select("*", { count: "exact", head: true })
+        .eq("campaign_id", campaign_id);
+
+      await supabase
+        .from("campaigns")
+        .update({ contacts_count: count || 0 })
+        .eq("id", campaign_id);
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          contacts_created: data?.length || 0,
+          company_id: company_id 
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Legacy: Handle research_complete event
     if (event === "research_complete" && campaign_id && contacts) {
-      // Insert contacts from n8n research results
       const contactsToInsert = contacts.map((contact: any) => ({
         campaign_id,
         company_id: contact.company_id || null,
@@ -47,7 +102,6 @@ serve(async (req) => {
         );
       }
 
-      // Update campaign contacts count
       await supabase
         .from("campaigns")
         .update({ contacts_count: contactsToInsert.length })

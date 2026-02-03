@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { ResearchCompanyCard } from '@/components/research/ResearchCompanyCard';
 import { supabase } from '@/integrations/supabase/client';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // Call webhook via edge function proxy to avoid CORS
 // Uses AbortController with extended timeout for long-running AI research
@@ -343,13 +344,27 @@ export default function ResearchProgress() {
       
       // Build people payload with company research results included
       const peoplePayload = buildPeoplePayload(selectedCampaign, company, parsedCompanyData);
+      // Add company_id and campaign_id for the callback
+      (peoplePayload as any).company_id = company.id;
+      (peoplePayload as any).campaign_id = selectedCampaign?.id;
       console.log(`[Research] People payload includes company research:`, !!parsedCompanyData);
       
       try {
         console.log(`[Research] Sending people webhook request via proxy...`);
         const peopleData = await callWebhookProxy(integrations.people_research_webhook_url!, peoplePayload);
-        console.log(`[Research] People response received`);
+        console.log(`[Research] People response received:`, peopleData);
         
+        // Check if this is an async "processing" response
+        if (peopleData?.status === 'processing') {
+          console.log(`[Research] People research is processing async for ${company.name}`);
+          updateCompanyProgress(company.id, { 
+            step: 'awaiting_callback',
+          });
+          // Don't wait - continue to next company, results will come via callback
+          continue;
+        }
+        
+        // Synchronous response - parse and store
         const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
         console.log(`[Research] People data parsed:`, parsedPeopleData ? 'success' : 'null');
         
@@ -385,6 +400,47 @@ export default function ResearchProgress() {
     }
   }, [isRunning, processCompanies]);
 
+  // Subscribe to realtime contact inserts to detect async callback completions
+  useEffect(() => {
+    if (!selectedCampaign?.id) return;
+
+    const channel: RealtimeChannel = supabase
+      .channel('contacts-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'contacts',
+          filter: `campaign_id=eq.${selectedCampaign.id}`,
+        },
+        (payload) => {
+          console.log('[Realtime] New contact inserted:', payload.new);
+          const newContact = payload.new as { company_id?: string; name?: string };
+          
+          if (newContact.company_id) {
+            // Find the company progress and update it to complete
+            const progress = companiesProgress.find(
+              (p) => p.companyId === newContact.company_id && p.step === 'awaiting_callback'
+            );
+            
+            if (progress) {
+              console.log(`[Realtime] Marking ${progress.companyName} as complete`);
+              updateCompanyProgress(newContact.company_id, { step: 'complete' });
+              toast.success(`People research complete for ${progress.companyName}`);
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Subscription status:', status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedCampaign?.id, companiesProgress, updateCompanyProgress]);
+
   const handleStop = () => {
     setResearchProgress({ isRunning: false });
     isProcessingRef.current = false;
@@ -402,6 +458,12 @@ export default function ResearchProgress() {
 
     if (companyStep === 'error') return 'error';
     if (companyStep === 'complete') return 'completed';
+    if (companyStep === 'awaiting_callback') {
+      // People step is "in progress" (waiting for callback)
+      if (stepId === 'company') return 'completed';
+      if (stepId === 'people') return 'current';
+      return 'pending';
+    }
     if (stepIndex < currentIndex) return 'completed';
     if (stepIndex === currentIndex) return 'current';
     return 'pending';

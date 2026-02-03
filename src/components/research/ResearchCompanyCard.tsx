@@ -78,7 +78,8 @@ export function ResearchCompanyCard({
   // Determine if we're currently loading each section
   const isLoadingCompany = step === 'company';
   const isLoadingPeople = step === 'people';
-  const isProcessing = isLoadingCompany || isLoadingPeople;
+  const isAwaitingCallback = step === 'awaiting_callback';
+  const isProcessing = isLoadingCompany || isLoadingPeople || isAwaitingCallback;
 
   const getStatusColor = () => {
     if (step === 'error') return 'border-destructive bg-destructive/5';
@@ -115,6 +116,7 @@ export function ResearchCompanyCard({
   const getCurrentStepLabel = () => {
     if (isLoadingCompany) return 'Researching company status...';
     if (isLoadingPeople) return 'Finding decision makers...';
+    if (isAwaitingCallback) return 'Processing contacts (waiting for results)...';
     return null;
   };
 
@@ -269,7 +271,7 @@ export function ResearchCompanyCard({
           )}
 
           {/* People Data or Loading Skeleton */}
-          {isLoadingPeople && <PeopleDataSkeleton />}
+          {(isLoadingPeople || isAwaitingCallback) && <PeopleDataSkeleton />}
           {peopleData?.contacts && peopleData.contacts.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
