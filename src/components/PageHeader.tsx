@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, forwardRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -11,19 +11,20 @@ interface PageHeaderProps {
   actions?: ReactNode;
 }
 
-export function PageHeader({ title, subtitle, backTo, onBack, actions }: PageHeaderProps) {
-  const navigate = useNavigate();
+export const PageHeader = forwardRef<HTMLDivElement, PageHeaderProps>(
+  ({ title, subtitle, backTo, onBack, actions }, ref) => {
+    const navigate = useNavigate();
 
-  const handleBack = () => {
-    if (onBack) {
-      onBack();
-    } else if (backTo) {
-      navigate(backTo);
-    }
-  };
+    const handleBack = () => {
+      if (onBack) {
+        onBack();
+      } else if (backTo) {
+        navigate(backTo);
+      }
+    };
 
-  return (
-    <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+    return (
+      <div ref={ref} className="flex items-center justify-between px-6 py-4 border-b border-border">
       <div className="flex items-center gap-3">
         {(backTo || onBack) && (
           <Button
@@ -45,4 +46,6 @@ export function PageHeader({ title, subtitle, backTo, onBack, actions }: PageHea
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
   );
-}
+});
+
+PageHeader.displayName = 'PageHeader';
