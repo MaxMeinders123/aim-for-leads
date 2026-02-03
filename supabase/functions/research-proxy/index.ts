@@ -37,18 +37,13 @@ serve(async (req) => {
     console.log(`[research-proxy] Calling webhook: ${webhookUrl}`);
     
     // Make the request to the webhook from the server (no CORS issues)
-    // Extended timeout: 15 minutes for long-running AI research
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 900000); // 15 min
-    
+    // Note: Supabase Edge Functions have platform execution limits
+    // The actual timeout depends on your Supabase plan
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload || {}),
-      signal: controller.signal,
     });
-    
-    clearTimeout(timeoutId);
 
     console.log(`[research-proxy] Response status: ${response.status}`);
 
@@ -74,14 +69,6 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error(`[research-proxy] Error: ${errorMessage}`);
-    
-    // Check if it was a timeout
-    if (error instanceof Error && error.name === 'AbortError') {
-      return new Response(
-        JSON.stringify({ error: "Request timed out (15 min limit)" }),
-        { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
     
     return new Response(
       JSON.stringify({ error: errorMessage }),
