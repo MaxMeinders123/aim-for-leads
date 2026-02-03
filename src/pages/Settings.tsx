@@ -19,8 +19,9 @@ export default function Settings() {
   const [companyResearchUrl, setCompanyResearchUrl] = useState(integrations.company_research_webhook_url || '');
   const [peopleResearchUrl, setPeopleResearchUrl] = useState(integrations.people_research_webhook_url || '');
   const [clayUrl, setClayUrl] = useState(integrations.clay_webhook_url || '');
+  const [salesforceUrl, setSalesforceUrl] = useState(integrations.salesforce_webhook_url || '');
   const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState<'company' | 'people' | 'clay' | null>(null);
+  const [isTesting, setIsTesting] = useState<'company' | 'people' | 'clay' | 'salesforce' | null>(null);
 
   // Load integrations from Supabase
   useEffect(() => {
@@ -41,10 +42,12 @@ export default function Settings() {
         setCompanyResearchUrl(companyUrl);
         setPeopleResearchUrl(peopleUrl);
         setClayUrl(data.clay_webhook_url || '');
+        setSalesforceUrl(data.salesforce_webhook_url || '');
         setIntegrations({
           company_research_webhook_url: companyUrl,
           people_research_webhook_url: peopleUrl,
           clay_webhook_url: data.clay_webhook_url || '',
+          salesforce_webhook_url: data.salesforce_webhook_url || '',
           n8n_webhook_url: data.n8n_webhook_url || '',
           dark_mode: data.dark_mode || false,
           sound_effects: data.sound_effects !== false,
@@ -66,6 +69,7 @@ export default function Settings() {
           company_research_webhook_url: companyResearchUrl || null,
           people_research_webhook_url: peopleResearchUrl || null,
           clay_webhook_url: clayUrl || null,
+          salesforce_webhook_url: salesforceUrl || null,
           dark_mode: integrations.dark_mode,
           sound_effects: integrations.sound_effects,
         })
@@ -77,6 +81,7 @@ export default function Settings() {
         company_research_webhook_url: companyResearchUrl,
         people_research_webhook_url: peopleResearchUrl,
         clay_webhook_url: clayUrl,
+        salesforce_webhook_url: salesforceUrl,
       });
 
       toast.success('Settings saved');
@@ -87,11 +92,12 @@ export default function Settings() {
     }
   };
 
-  const handleTestWebhook = async (type: 'company' | 'people' | 'clay') => {
+  const handleTestWebhook = async (type: 'company' | 'people' | 'clay' | 'salesforce') => {
     const urlMap = {
       company: companyResearchUrl,
       people: peopleResearchUrl,
       clay: clayUrl,
+      salesforce: salesforceUrl,
     };
     const url = urlMap[type];
     
@@ -263,6 +269,31 @@ export default function Settings() {
                     className="rounded-lg px-6"
                   >
                     {isTesting === 'clay' ? 'Testing...' : 'Test'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-border space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">4</div>
+                  <Label htmlFor="salesforceUrl">Salesforce Import Webhook (n8n)</Label>
+                </div>
+                <p className="text-xs text-muted-foreground ml-8">Sends individual contacts to Salesforce via n8n</p>
+                <div className="flex gap-2">
+                  <Input
+                    id="salesforceUrl"
+                    value={salesforceUrl}
+                    onChange={(e) => setSalesforceUrl(e.target.value)}
+                    placeholder="https://n8n.example.com/webhook/salesforce-import"
+                    className="h-10 rounded-lg flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => handleTestWebhook('salesforce')}
+                    disabled={isTesting === 'salesforce'}
+                    className="rounded-lg px-6"
+                  >
+                    {isTesting === 'salesforce' ? 'Testing...' : 'Test'}
                   </Button>
                 </div>
               </div>
