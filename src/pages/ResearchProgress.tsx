@@ -45,19 +45,42 @@ const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
 // Parse the AI response text to extract JSON
 const parseAIResponse = (responseData: any): any => {
   try {
-    // Handle the nested structure from n8n
+    // Handle the nested structure from n8n with markdown code blocks
     if (responseData?.output?.[0]?.content?.[0]?.text) {
-      const text = responseData.output[0].content[0].text;
+      let text = responseData.output[0].content[0].text;
+      
+      // Strip markdown code blocks if present (```json ... ```)
+      const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        text = jsonMatch[1].trim();
+      }
+      
       return JSON.parse(text);
     }
-    // Direct JSON response
-    if (typeof responseData === 'object') {
+    
+    // Handle array response (first element)
+    if (Array.isArray(responseData) && responseData[0]?.output) {
+      return parseAIResponse(responseData[0]);
+    }
+    
+    // Direct JSON response with the expected fields
+    if (typeof responseData === 'object' && (responseData.status || responseData.company_status)) {
       return responseData;
     }
+    
     // Try parsing as string
-    return JSON.parse(responseData);
+    if (typeof responseData === 'string') {
+      // Strip markdown code blocks if present
+      const jsonMatch = responseData.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[1].trim());
+      }
+      return JSON.parse(responseData);
+    }
+    
+    return responseData;
   } catch (e) {
-    console.error('Failed to parse AI response:', e);
+    console.error('Failed to parse AI response:', e, responseData);
     return null;
   }
 };
