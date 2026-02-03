@@ -1,4 +1,4 @@
-import { Building2, Users, Zap, Check, Loader2, AlertCircle, Cloud, ChevronDown, ChevronUp, ExternalLink, RotateCcw } from 'lucide-react';
+import { Building2, Users, Check, Loader2, AlertCircle, Cloud, ChevronDown, ChevronUp, ExternalLink, RotateCcw } from 'lucide-react';
 import { CompanyResearchProgress, ResearchContact } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -10,13 +10,12 @@ interface ResearchCompanyCardProps {
   isExpanded: boolean;
   onToggleExpand: () => void;
   getStepStatus: (stepId: string, companyStep: string) => string;
-  onRetryStep?: (companyId: string, step: 'company' | 'people' | 'clay') => void;
+  onRetryStep?: (companyId: string, step: 'company' | 'people') => void;
 }
 
 const researchSteps = [
   { id: 'company', label: 'Company', icon: Building2 },
   { id: 'people', label: 'People', icon: Users },
-  { id: 'clay', label: 'Enrich', icon: Zap },
 ];
 
 // Loading skeleton for company data
@@ -66,24 +65,6 @@ function PeopleDataSkeleton() {
   );
 }
 
-// Loading skeleton for Clay enrichment
-function ClayDataSkeleton() {
-  return (
-    <div className="space-y-2">
-      <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-        <Zap className="w-4 h-4" />
-        <span className="flex items-center gap-2">
-          Enriching data...
-          <Loader2 className="w-3 h-3 animate-spin" />
-        </span>
-      </h4>
-      <div className="bg-background rounded-lg p-3 space-y-2">
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-3/4" />
-      </div>
-    </div>
-  );
-}
 
 export function ResearchCompanyCard({ 
   companyProgress, 
@@ -97,8 +78,7 @@ export function ResearchCompanyCard({
   // Determine if we're currently loading each section
   const isLoadingCompany = step === 'company';
   const isLoadingPeople = step === 'people';
-  const isLoadingClay = step === 'clay';
-  const isProcessing = isLoadingCompany || isLoadingPeople || isLoadingClay;
+  const isProcessing = isLoadingCompany || isLoadingPeople;
 
   const getStatusColor = () => {
     if (step === 'error') return 'border-destructive bg-destructive/5';
@@ -135,7 +115,6 @@ export function ResearchCompanyCard({
   const getCurrentStepLabel = () => {
     if (isLoadingCompany) return 'Researching company status...';
     if (isLoadingPeople) return 'Finding decision makers...';
-    if (isLoadingClay) return 'Enriching contact data...';
     return null;
   };
 
@@ -228,15 +207,6 @@ export function ResearchCompanyCard({
               >
                 <RotateCcw className="w-3 h-3 mr-1" />
                 Retry People
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'clay'); }}
-                className="text-xs"
-              >
-                <RotateCcw className="w-3 h-3 mr-1" />
-                Retry/Skip Clay
               </Button>
             </div>
           )}
@@ -350,8 +320,6 @@ export function ResearchCompanyCard({
             </div>
           )}
 
-          {/* Clay Enrichment Loading Skeleton */}
-          {isLoadingClay && <ClayDataSkeleton />}
         </div>
       )}
     </div>
