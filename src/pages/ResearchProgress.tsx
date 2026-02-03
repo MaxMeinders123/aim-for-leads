@@ -354,17 +354,7 @@ export default function ResearchProgress() {
         const peopleData = await callWebhookProxy(integrations.people_research_webhook_url!, peoplePayload);
         console.log(`[Research] People response received:`, peopleData);
         
-        // Check if this is an async "processing" response
-        if (peopleData?.status === 'processing') {
-          console.log(`[Research] People research is processing async for ${company.name}`);
-          updateCompanyProgress(company.id, { 
-            step: 'awaiting_callback',
-          });
-          // Don't wait - continue to next company, results will come via callback
-          continue;
-        }
-        
-        // Synchronous response - parse and store
+        // Parse and store the response
         const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
         console.log(`[Research] People data parsed:`, parsedPeopleData ? 'success' : 'null');
         
