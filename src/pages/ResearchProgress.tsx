@@ -143,11 +143,18 @@ export default function ResearchProgress() {
       updateCompanyProgress(companyId, { step: 'company', error: undefined });
       
       try {
+        // 3 minute timeout for company research
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 180000);
+        
         const response = await fetch(integrations.company_research_webhook_url!, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) throw new Error(`Company research failed: ${response.status}`);
 
@@ -161,8 +168,9 @@ export default function ResearchProgress() {
         updateCompanyProgress(companyId, { step: 'people', companyData: parsedData || undefined });
         toast.success(`Company research complete for ${company.name}`);
       } catch (error: any) {
-        updateCompanyProgress(companyId, { step: 'error', error: error.message });
-        toast.error(`Failed: ${error.message}`);
+        const errorMsg = error.name === 'AbortError' ? 'Request timed out (3 min)' : error.message;
+        updateCompanyProgress(companyId, { step: 'error', error: errorMsg });
+        toast.error(`Failed: ${errorMsg}`);
       }
     }
 
@@ -170,11 +178,18 @@ export default function ResearchProgress() {
       updateCompanyProgress(companyId, { step: 'people', error: undefined });
       
       try {
+        // 10 minute timeout for people research (takes 5-10 min)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600000);
+        
         const response = await fetch(integrations.people_research_webhook_url!, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) throw new Error(`People research failed: ${response.status}`);
 
@@ -188,8 +203,9 @@ export default function ResearchProgress() {
         updateCompanyProgress(companyId, { step: 'clay', peopleData: parsedData || undefined });
         toast.success(`People research complete for ${company.name}`);
       } catch (error: any) {
-        updateCompanyProgress(companyId, { step: 'error', error: error.message });
-        toast.error(`Failed: ${error.message}`);
+        const errorMsg = error.name === 'AbortError' ? 'Request timed out (10 min)' : error.message;
+        updateCompanyProgress(companyId, { step: 'error', error: errorMsg });
+        toast.error(`Failed: ${errorMsg}`);
       }
     }
 
@@ -241,11 +257,18 @@ export default function ResearchProgress() {
       updateCompanyProgress(company.id, { step: 'company' });
 
       try {
+        // 3 minute timeout for company research
+        const companyController = new AbortController();
+        const companyTimeoutId = setTimeout(() => companyController.abort(), 180000);
+        
         const companyResponse = await fetch(integrations.company_research_webhook_url!, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
+          signal: companyController.signal,
         });
+        
+        clearTimeout(companyTimeoutId);
 
         if (!companyResponse.ok) {
           throw new Error(`Company research failed: ${companyResponse.status}`);
@@ -274,9 +297,10 @@ export default function ResearchProgress() {
 
       } catch (error: any) {
         console.error('Company research error:', error);
+        const errorMsg = error.name === 'AbortError' ? 'Request timed out (3 min)' : error.message;
         updateCompanyProgress(company.id, { 
           step: 'error',
-          error: error.message,
+          error: errorMsg,
         });
         continue; // Skip to next company
       }
@@ -285,11 +309,18 @@ export default function ResearchProgress() {
       setResearchProgress({ currentStep: 'people' });
       
       try {
+        // 10 minute timeout for people research (takes 5-10 min)
+        const peopleController = new AbortController();
+        const peopleTimeoutId = setTimeout(() => peopleController.abort(), 600000);
+        
         const peopleResponse = await fetch(integrations.people_research_webhook_url!, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
+          signal: peopleController.signal,
         });
+        
+        clearTimeout(peopleTimeoutId);
 
         if (!peopleResponse.ok) {
           throw new Error(`People research failed: ${peopleResponse.status}`);
@@ -315,9 +346,10 @@ export default function ResearchProgress() {
 
       } catch (error: any) {
         console.error('People research error:', error);
+        const errorMsg = error.name === 'AbortError' ? 'Request timed out (10 min)' : error.message;
         updateCompanyProgress(company.id, { 
           step: 'error',
-          error: error.message,
+          error: errorMsg,
         });
         continue;
       }
