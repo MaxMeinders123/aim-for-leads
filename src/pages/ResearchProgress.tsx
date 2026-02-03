@@ -103,7 +103,6 @@ const parseAIResponse = (responseData: any): any => {
 const researchSteps = [
   { id: 'company', label: 'Company', icon: Building2 },
   { id: 'people', label: 'People', icon: Users },
-  { id: 'clay', label: 'Enrich', icon: Zap },
 ];
 
 export default function ResearchProgress() {
@@ -224,31 +223,6 @@ export default function ResearchProgress() {
       }
     }
 
-    if (stepToRetry === 'clay') {
-      updateCompanyProgress(companyId, { step: 'clay', error: undefined });
-      
-      try {
-        if (!integrations.clay_webhook_url) {
-          updateCompanyProgress(companyId, { step: 'complete' });
-          toast.success(`Skipped Clay (not configured) - ${company.name} complete`);
-          return;
-        }
-
-        const response = await fetch(integrations.clay_webhook_url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) throw new Error(`Clay enrichment failed: ${response.status}`);
-        
-        updateCompanyProgress(companyId, { step: 'complete' });
-        toast.success(`Clay enrichment complete for ${company.name}`);
-      } catch (error: any) {
-        updateCompanyProgress(companyId, { step: 'error', error: error.message });
-        toast.error(`Failed: ${error.message}`);
-      }
-    }
   }, [companies, selectedCampaign, integrations, updateCompanyProgress]);
 
   // Process companies sequentially through the 3 webhooks
@@ -355,7 +329,7 @@ export default function ResearchProgress() {
         const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
         
         updateCompanyProgress(company.id, { 
-          step: 'clay',
+          step: 'complete',
           peopleData: parsedPeopleData || undefined,
         });
 
@@ -368,29 +342,6 @@ export default function ResearchProgress() {
         });
         continue;
       }
-
-      // Step 3: Clay Enrichment (if configured)
-      if (integrations.clay_webhook_url) {
-        setResearchProgress({ currentStep: 'clay' });
-        
-        try {
-          const clayResponse = await fetch(integrations.clay_webhook_url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-
-          if (!clayResponse.ok) {
-            console.warn('Clay enrichment failed, continuing without enrichment');
-          }
-        } catch (error: any) {
-          console.warn('Clay enrichment error:', error);
-          // Don't fail the whole process for Clay errors
-        }
-      }
-
-      // Mark as complete
-      updateCompanyProgress(company.id, { step: 'complete' });
     }
 
     // All done
@@ -418,7 +369,7 @@ export default function ResearchProgress() {
   };
 
   const getStepStatus = (stepId: string, companyStep: string) => {
-    const steps = ['company', 'people', 'clay', 'complete'];
+    const steps = ['company', 'people', 'complete'];
     const currentIndex = steps.indexOf(companyStep);
     const stepIndex = steps.indexOf(stepId);
 
