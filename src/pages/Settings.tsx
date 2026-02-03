@@ -86,16 +86,14 @@ export default function Settings() {
 
     setIsTesting(type);
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'test',
-          source: 'engagetech_researcher',
-        }),
+      // Use edge function proxy to avoid CORS issues
+      const { data, error } = await supabase.functions.invoke('test-webhook', {
+        body: { url },
       });
 
-      if (!response.ok) throw new Error('Webhook returned an error');
+      if (error) throw error;
+      if (!data.success) throw new Error(data.message || 'Webhook returned an error');
+      
       toast.success(`${type === 'n8n' ? 'n8n' : 'Clay'} webhook is working!`);
     } catch (error: any) {
       toast.error(`Test failed: ${error.message || 'Could not reach webhook'}`);
