@@ -34,7 +34,7 @@ const parseToArray = (text?: string): string[] => {
     .filter(item => item.length > 0);
 };
 
-// Build the structured payload for a single company
+// Build the structured payload for company research
 const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
   campaign: {
     campaignName: campaign?.name || '',
@@ -54,6 +54,40 @@ const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
     website: company.website || '',
     linkedin: company.linkedin_url || '',
   },
+});
+
+// Build the structured payload for people research (includes company research results)
+const buildPeoplePayload = (
+  campaign: Campaign | null, 
+  company: Company, 
+  companyResearchResult: CompanyResearchResult | null
+) => ({
+  campaign: {
+    campaignName: campaign?.name || '',
+    product: campaign?.product || '',
+    productCategory: campaign?.product_category || '',
+    primaryAngle: campaign?.primary_angle || '',
+    secondaryAngle: campaign?.secondary_angle || '',
+    targetRegion: campaign?.target_region || '',
+    painPoints: parseToArray(campaign?.pain_points),
+    targetPersonas: parseToArray(campaign?.personas),
+    targetTitles: parseToArray(campaign?.job_titles),
+    targetVerticals: parseToArray(campaign?.target_verticals),
+    techFocus: campaign?.technical_focus || '',
+  },
+  company: {
+    name: company.name,
+    website: company.website || '',
+    linkedin: company.linkedin_url || '',
+  },
+  // Include company research results for context
+  companyResearch: companyResearchResult ? {
+    status: companyResearchResult.company_status || companyResearchResult.status,
+    acquiredBy: companyResearchResult.acquiredBy,
+    effectiveDate: companyResearchResult.effectiveDate,
+    cloudPreference: companyResearchResult.cloud_preference,
+  } : null,
+  qualify: true,
 });
 
 // Parse the AI response text to extract JSON
@@ -184,11 +218,18 @@ export default function ResearchProgress() {
     }
 
     if (stepToRetry === 'people') {
+      // Get existing company data from progress
+      const existingProgress = companiesProgress.find(p => p.companyId === companyId);
+      const companyData = existingProgress?.companyData || null;
+      
+      // Build people payload with company research results
+      const peoplePayload = buildPeoplePayload(selectedCampaign, company, companyData);
+      
       updateCompanyProgress(companyId, { step: 'people', error: undefined });
       
       try {
         console.log(`[Retry] People research for ${company.name}`);
-        const data = await callWebhookProxy(integrations.people_research_webhook_url!, payload);
+        const data = await callWebhookProxy(integrations.people_research_webhook_url!, peoplePayload);
         
         const parsedData = data ? parseAIResponse(data) as PeopleResearchResult : null;
         updateCompanyProgress(companyId, { step: 'complete', peopleData: parsedData || undefined });
@@ -199,7 +240,7 @@ export default function ResearchProgress() {
       }
     }
 
-  }, [companies, selectedCampaign, integrations, updateCompanyProgress]);
+  }, [companies, selectedCampaign, integrations, updateCompanyProgress, companiesProgress]);
 
   // Process companies sequentially: Company Research → People Research
   const processCompanies = useCallback(async () => {
@@ -266,9 +307,13 @@ export default function ResearchProgress() {
       console.log(`[Research] Step 2: People research for ${company.name}`);
       setResearchProgress({ currentStep: 'people' });
       
+      // Build people payload with company research results included
+      const peoplePayload = buildPeoplePayload(selectedCampaign, company, parsedCompanyData);
+      console.log(`[Research] People payload includes company research:`, !!parsedCompanyData);
+      
       try {
         console.log(`[Research] Sending people webhook request via proxy...`);
-        const peopleData = await callWebhookProxy(integrations.people_research_webhook_url!, payload);
+        const peopleData = await callWebhookProxy(integrations.people_research_webhook_url!, peoplePayload);
         console.log(`[Research] People response received`);
         
         const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
