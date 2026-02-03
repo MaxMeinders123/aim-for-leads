@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -22,6 +23,16 @@ export default function Settings() {
   const [salesforceUrl, setSalesforceUrl] = useState(integrations.salesforce_webhook_url || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState<'company' | 'people' | 'clay' | 'salesforce' | null>(null);
+
+  const isN8nCloudUrl = (url?: string) => {
+    if (!url) return false;
+    try {
+      const u = new URL(url);
+      return u.hostname.endsWith('.app.n8n.cloud') || u.hostname.endsWith('.n8n.cloud');
+    } catch {
+      return false;
+    }
+  };
 
   // Load integrations from Supabase
   useEffect(() => {
@@ -246,6 +257,16 @@ export default function Settings() {
                     {isTesting === 'people' ? 'Testing...' : 'Test'}
                   </Button>
                 </div>
+
+                {isN8nCloudUrl(peopleResearchUrl) && (
+                  <Alert className="mt-3">
+                    <AlertTitle>n8n Cloud URL detected</AlertTitle>
+                    <AlertDescription>
+                      Long People Research runs (5–10 min) will time out when called as a single request. Use your self-hosted n8n URL here,
+                      or switch People Research to async callback (respond immediately, then POST results back).
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
 
               <div className="p-4 rounded-xl border border-border space-y-3">
