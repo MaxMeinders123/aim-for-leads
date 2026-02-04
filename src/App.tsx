@@ -11,7 +11,7 @@ import CampaignSetup from "./pages/CampaignSetup";
 import AddCompanies from "./pages/AddCompanies";
 import CompanyPreview from "./pages/CompanyPreview";
 import ResearchProgress from "./pages/ResearchProgress";
-import Results from "./pages/Results";
+import Contacts from "./pages/Contacts";
 import Settings from "./pages/Settings";
 import ResearchSystem from "./pages/ResearchSystem";
 import NotFound from "./pages/NotFound";
@@ -153,7 +153,7 @@ const App = () => (
               path="/results"
               element={
                 <ProtectedRoute>
-                  <Results />
+                  <Contacts />
                 </ProtectedRoute>
               }
             />
@@ -161,7 +161,7 @@ const App = () => (
               path="/contacts"
               element={
                 <ProtectedRoute>
-                  <Results />
+                  <Contacts />
                 </ProtectedRoute>
               }
             />
