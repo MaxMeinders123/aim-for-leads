@@ -349,59 +349,19 @@ export default function ResearchProgress() {
         continue; // Skip to next company - don't proceed to people research
       }
 
-      // Only proceed to people research if company research succeeded
-      if (!companyResearchSuccess) {
-        console.log(`[Research] Company research failed, skipping people research for ${company.name}`);
-        continue;
-      }
+      // ========== STEP 2: People Research (Auto-triggered by Backend) ==========
+      // NOTE: Prospect research is now automatically triggered by the Supabase edge function
+      // after company research completes. No need to call the webhook from frontend.
+      // The realtime subscriptions below will detect when prospect data arrives and update the UI.
 
-      // ========== STEP 2: People Research ==========
-      console.log(`[Research] Step 2: People research for ${company.name}`);
-      setResearchProgress({ currentStep: 'people' });
-      
-      // Build people payload with company research results included
-      const peoplePayload = buildPeoplePayload(selectedCampaign, company, parsedCompanyData, user?.id || '');
-      // Add company_id and campaign_id for the callback
-      (peoplePayload as any).company_id = company.id;
-      (peoplePayload as any).campaign_id = selectedCampaign?.id;
-      console.log(`[Research] People payload includes company research:`, !!parsedCompanyData);
-      
-      try {
-        console.log(`[Research] Sending people webhook request via proxy...`);
-        const peopleData = await callWebhookProxy(integrations.people_research_webhook_url!, peoplePayload);
-        console.log(`[Research] People response received:`, peopleData);
+      console.log(`[Research] Company research complete for ${company.name}`);
+      console.log(`[Research] Prospect research will be triggered automatically by backend`);
 
-        // Async mode: n8n responds immediately, then posts results back later
-        if (peopleData?.status === 'processing' || peopleData?.status === 'accepted') {
-          updateCompanyProgress(company.id, { step: 'awaiting_callback', error: undefined });
-          // Continue to next company; completion will come via callback insert
-          continue;
-        }
-        
-        // Parse and store the response
-        const parsedPeopleData = peopleData ? parseAIResponse(peopleData) as PeopleResearchResult : null;
-        console.log(`[Research] People data parsed:`, parsedPeopleData ? 'success' : 'null');
-        
-        updateCompanyProgress(company.id, { 
-          step: 'complete',
-          peopleData: parsedPeopleData || undefined,
-        });
-        
-        console.log(`[Research] Completed all research for ${company.name}`);
-
-      } catch (error: any) {
-        console.error('[Research] People research error:', error);
-
-        const msg = String(error?.message || 'Failed to fetch');
-        const isTimeout = msg.includes('524') || msg.includes('504') || msg.toLowerCase().includes('timeout');
-        updateCompanyProgress(company.id, { 
-          step: 'error',
-          error: isTimeout
-            ? 'Timed out waiting for People Research. This step is too long for a single request—use async callback (respond immediately + POST results back) or shorten the workflow.'
-            : msg,
-        });
-        continue;
-      }
+      // Mark as awaiting prospect research (will be updated by realtime subscription)
+      updateCompanyProgress(company.id, {
+        step: 'people',
+        companyData: parsedCompanyData || undefined,
+      });
     }
 
     // All done
@@ -511,13 +471,31 @@ export default function ResearchProgress() {
           table: 'prospect_research',
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
+        async (payload) => {
           console.log('[Realtime] Prospect research completed:', payload.new);
           const newRecord = payload.new as { company_research_id: string };
 
-          // We'd need to track company_research_id to company mapping
-          // For now, just log it - the contacts subscription handles completion
-          console.log(`[Realtime] New prospect inserted for company_research_id: ${newRecord.company_research_id}`);
+          // Find the matching company by looking up the company_research record
+          const { data: companyResearch } = await supabase
+            .from('company_research')
+            .select('company_domain')
+            .eq('id', newRecord.company_research_id)
+            .single();
+
+          if (companyResearch) {
+            const matchingCompany = companies.find(c => {
+              const domain = c.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || c.name.toLowerCase().replace(/\s+/g, '');
+              return domain === companyResearch.company_domain;
+            });
+
+            if (matchingCompany) {
+              console.log(`[Realtime] Prospect received for ${matchingCompany.name}, marking as complete`);
+              updateCompanyProgress(matchingCompany.id, {
+                step: 'complete',
+              });
+              toast.success(`Prospect research complete for ${matchingCompany.name}`);
+            }
+          }
         }
       )
       .subscribe((status) => {

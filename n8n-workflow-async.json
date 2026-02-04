@@ -143,6 +143,10 @@
             {
               "name": "status",
               "value": "completed"
+            },
+            {
+              "name": "original_payload",
+              "value": "={{ $json.original_payload }}"
             }
           ]
         },
@@ -178,6 +182,12 @@
               "name": "output[0].content[0].text",
               "value": "={{ $json.output[0].content[0].text }}",
               "type": "string"
+            },
+            {
+              "id": "original-payload-id",
+              "name": "original_payload",
+              "value": "={{ $('Company Research Webhook').item.json.body }}",
+              "type": "object"
             }
           ]
         },
