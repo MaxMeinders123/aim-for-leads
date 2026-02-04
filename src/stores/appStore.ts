@@ -149,6 +149,7 @@ interface AppState {
   // Contacts
   contacts: Contact[];
   setContacts: (contacts: Contact[]) => void;
+  addContacts: (contacts: Contact[]) => void;
   toggleContactSelection: (id: string) => void;
   selectAllContacts: () => void;
   deselectAllContacts: () => void;
@@ -233,6 +234,9 @@ export const useAppStore = create<AppState>((set) => ({
   // Contacts
   contacts: [],
   setContacts: (contacts) => set({ contacts }),
+  addContacts: (newContacts) => set((state) => ({
+    contacts: [...state.contacts, ...newContacts],
+  })),
   toggleContactSelection: (id) => set((state) => ({
     contacts: state.contacts.map((c) =>
       c.id === id ? { ...c, selected: !c.selected } : c
