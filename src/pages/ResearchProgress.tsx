@@ -95,13 +95,15 @@ const buildCompanyPayload = (campaign: Campaign | null, company: Company, userId
 
 // Build the structured payload for people research (includes company research results)
 const buildPeoplePayload = (
-  campaign: Campaign | null, 
-  company: Company, 
+  campaign: Campaign | null,
+  company: Company,
   companyResearchResult: CompanyResearchResult | null,
-  userId: string
+  userId: string,
+  companyResearchId?: string
 ) => ({
   user_id: userId,
   company_domain: company.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || company.name.toLowerCase().replace(/\s+/g, ''),
+  company_research_id: companyResearchId, // UUID linking to company_research table
   campaign: {
     campaignName: campaign?.name || '',
     product: campaign?.product || '',
@@ -259,19 +261,25 @@ export default function ResearchProgress() {
     }
 
     if (stepToRetry === 'people') {
-      // Get existing company data from progress
+      // Get existing company data and research ID from progress
       const existingProgress = companiesProgress.find(p => p.companyId === companyId);
       const companyData = existingProgress?.companyData || null;
-      
-      // Build people payload with company research results
-      const peoplePayload = buildPeoplePayload(selectedCampaign, company, companyData, user?.id || '');
-      
+      const companyResearchId = existingProgress?.company_research_id;
+
+      if (!companyResearchId) {
+        toast.error('Missing company_research_id. Please retry company research first.');
+        return;
+      }
+
+      // Build people payload with company research results and ID
+      const peoplePayload = buildPeoplePayload(selectedCampaign, company, companyData, user?.id || '', companyResearchId);
+
       updateCompanyProgress(companyId, { step: 'people', error: undefined });
-      
+
       try {
-        console.log(`[Retry] People research for ${company.name}`);
+        console.log(`[Retry] People research for ${company.name} with company_research_id: ${companyResearchId}`);
         const data = await callWebhookProxy(integrations.people_research_webhook_url!, peoplePayload);
-        
+
         const parsedData = data ? parseAIResponse(data) as PeopleResearchResult : null;
         updateCompanyProgress(companyId, { step: 'complete', peopleData: parsedData || undefined });
         toast.success(`People research complete for ${company.name}`);
@@ -436,7 +444,7 @@ export default function ResearchProgress() {
         },
         (payload) => {
           console.log('[Realtime] Company research completed:', payload.new);
-          const newRecord = payload.new as { company_domain: string; raw_data: any; status: string };
+          const newRecord = payload.new as { id: string; company_domain: string; raw_data: any; status: string };
 
           // Find the matching company by domain
           const matchingCompany = companies.find(c => {
@@ -445,12 +453,13 @@ export default function ResearchProgress() {
           });
 
           if (matchingCompany && newRecord.status === 'completed') {
-            console.log(`[Realtime] Company research done for ${matchingCompany.name}`);
+            console.log(`[Realtime] Company research done for ${matchingCompany.name}, ID: ${newRecord.id}`);
             const companyData = newRecord.raw_data;
 
             updateCompanyProgress(matchingCompany.id, {
               step: 'people',
               companyData: companyData || undefined,
+              company_research_id: newRecord.id, // Store the UUID for prospect research
             });
 
             toast.success(`Company research complete for ${matchingCompany.name}`);
