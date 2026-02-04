@@ -39,14 +39,43 @@ serve(async (req) => {
     const { 
       user_id, 
       company_domain, 
-      type,  // "company" or "prospect"
-      text, 
       research_result_id, 
       status, 
       error_message 
     } = body;
 
-    const parsed_data = parseTextToJson(text);
+    // === AUTO-DETECT FIELD FORMAT ===
+    // n8n sends: { prospect: "..." } or { company: "..." } or { " company": "..." }
+    // Also support explicit: { type: "company", text: "..." }
+    
+    let rawText: string | undefined;
+    let researchType: "company" | "prospect";
+    
+    if (body.prospect) {
+      // Prospect field present - this is prospect research
+      rawText = body.prospect;
+      researchType = "prospect";
+      console.log("[receive-research-results] Detected PROSPECT field");
+    } else if (body.company || body[" company"]) {
+      // Company field present (with or without leading space)
+      rawText = body.company || body[" company"];
+      researchType = "company";
+      console.log("[receive-research-results] Detected COMPANY field");
+    } else if (body.text) {
+      // Explicit text + type format
+      rawText = body.text;
+      researchType = body.type === "prospect" ? "prospect" : "company";
+      console.log("[receive-research-results] Using explicit text/type format:", researchType);
+    } else {
+      console.error("[receive-research-results] No recognized data field found");
+      return new Response(
+        JSON.stringify({ error: "No data field found. Expected 'company', 'prospect', or 'text'" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    const parsed_data = parseTextToJson(rawText);
+    console.log("[receive-research-results] Parsed data:", parsed_data ? "success" : "null");
 
     if (!user_id || !company_domain) {
       return new Response(
@@ -55,12 +84,10 @@ serve(async (req) => {
       );
     }
 
-    // Determine research type - default to "company" if not specified
-    const researchType = type || "company";
+    console.log("[receive-research-results] Processing", researchType.toUpperCase(), "results");
 
     if (researchType === "company") {
       // === COMPANY RESEARCH RESULTS ===
-      console.log("[receive-research-results] Processing COMPANY results");
 
       // Find or create the research record
       const { data: existingRecord } = await supabase
