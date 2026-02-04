@@ -415,14 +415,12 @@ const ResearchSystem = () => {
   "user_id": "{{$json.body.user_id}}",
   "company_domain": "{{$json.body.company_domain}}",
   "status": "completed",
-  "company_data": {
-    "name": "Company Name",
-    "industry": "Technology",
-    "employee_count": 500,
-    ...
-  }
+  "text": "{{$json.llm_output}}"
 }`}
               </pre>
+              <p className="mt-2 text-xs text-muted-foreground">
+                💡 Send raw LLM output in "text" - the edge function handles JSON parsing
+              </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 ⚡ This automatically triggers People Research webhook
               </p>
@@ -446,18 +444,12 @@ const ResearchSystem = () => {
   "company_domain": "{{$json.body.company_domain}}",
   "research_result_id": "{{$json.body.research_result_id}}",
   "status": "completed",
-  "prospect_data": [
-    {
-      "first_name": "John",
-      "last_name": "Doe",
-      "title": "CTO",
-      "linkedin": "linkedin.com/in/johndoe",
-      "priority": "High",
-      "priority_reason": "Technical decision maker"
-    }
-  ]
+  "text": "{{$json.llm_output}}"
 }`}
               </pre>
+              <p className="mt-2 text-xs text-muted-foreground">
+                💡 Send raw LLM output in "text" - the edge function handles JSON parsing
+              </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 ⚡ This automatically triggers Clay webhook on completion
               </p>
