@@ -19,7 +19,26 @@ serve(async (req) => {
     const body = await req.json();
     console.log("[receive-company-results] Payload:", JSON.stringify(body, null, 2));
 
-    const { user_id, company_domain, company_data, status, error_message } = body;
+    const { user_id, company_domain, text, status, error_message } = body;
+
+    // Parse raw LLM text (may have ```json fences) into structured JSON
+    const parseTextToJson = (rawText?: string): any => {
+      if (!rawText) return null;
+      const cleaned = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/g, '')
+        .trim();
+      if (!cleaned) return null;
+      try {
+        return JSON.parse(cleaned);
+      } catch (e) {
+        console.error("[receive-company-results] Failed to parse text as JSON:", e);
+        return null;
+      }
+    };
+
+    const company_data = parseTextToJson(text);
 
     if (!user_id || !company_domain) {
       return new Response(
