@@ -19,7 +19,9 @@ serve(async (req) => {
     const body = await req.json();
     console.log("[receive-company-results] Payload:", JSON.stringify(body, null, 2));
 
-    const { user_id, company_domain, text, status, error_message } = body;
+    // Extract fields - support multiple formats from n8n
+    const { user_id, company_domain, status, error_message } = body;
+    const rawText = body.company || body[" company"] || body.text;
 
     // Parse raw LLM text (may have ```json fences) into structured JSON
     const parseTextToJson = (rawText?: string): any => {
@@ -38,7 +40,8 @@ serve(async (req) => {
       }
     };
 
-    const company_data = parseTextToJson(text);
+    const company_data = parseTextToJson(rawText);
+    console.log("[receive-company-results] Parsed company_data:", company_data);
 
     if (!user_id || !company_domain) {
       return new Response(
@@ -47,8 +50,45 @@ serve(async (req) => {
       );
     }
 
-    // Find or create the research record
-    const { data: existingRecord } = await supabase
+    // Extract normalized fields from company_data
+    const companyName = company_data?.company || null;
+    const companyStatus = company_data?.company_status || null;
+    const acquiredBy = company_data?.acquiredBy || null;
+    const cloudProvider = company_data?.cloud_preference?.provider || null;
+    const cloudConfidence = company_data?.cloud_preference?.confidence || null;
+    const evidenceUrls = company_data?.cloud_preference?.evidence_urls || null;
+
+    // Insert into company_research table
+    const { data: insertedRecord, error: insertError } = await supabase
+      .from("company_research")
+      .insert({
+        user_id,
+        company_domain,
+        company_name: companyName,
+        status: status === "rejected" ? "failed" : "completed",
+        company_status: companyStatus,
+        acquired_by: acquiredBy,
+        cloud_provider: cloudProvider,
+        cloud_confidence: cloudConfidence,
+        evidence_urls: evidenceUrls,
+        raw_data: company_data,
+        error_message: error_message || null,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("[receive-company-results] Insert error:", insertError);
+      return new Response(
+        JSON.stringify({ error: insertError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("[receive-company-results] Inserted company research:", insertedRecord.id);
+
+    // Also update the legacy research_results table for backwards compatibility
+    const { data: existingLegacy } = await supabase
       .from("research_results")
       .select("id")
       .eq("user_id", user_id)
@@ -58,105 +98,27 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    let resultId: string;
-
-    if (existingRecord) {
-      // Update existing record with company data
-      const updateData: any = {
-        company_data: company_data || null,
-        status: status === "rejected" ? "rejected" : "company_complete",
-        error_message: error_message || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
+    if (existingLegacy) {
+      await supabase
         .from("research_results")
-        .update(updateData)
-        .eq("id", existingRecord.id);
-
-      if (error) {
-        console.error("[receive-company-results] Update error:", error);
-        return new Response(
-          JSON.stringify({ error: error.message }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      resultId = existingRecord.id;
-    } else {
-      // Insert new record
-      const { data: newRecord, error } = await supabase
-        .from("research_results")
-        .insert({
-          user_id,
-          company_domain,
-          company_data: company_data || null,
+        .update({
+          company_data: company_data,
           status: status === "rejected" ? "rejected" : "company_complete",
           error_message: error_message || null,
+          updated_at: new Date().toISOString(),
         })
-        .select("id")
-        .single();
-
-      if (error) {
-        console.error("[receive-company-results] Insert error:", error);
-        return new Response(
-          JSON.stringify({ error: error.message }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      resultId = newRecord.id;
-    }
-
-    console.log("[receive-company-results] Saved result:", resultId);
-
-    // If company research succeeded, trigger prospect research
-    if (status !== "rejected" && company_data) {
-      // Get people research webhook URL
-      const { data: integrationData } = await supabase
-        .from("user_integrations")
-        .select("people_research_webhook_url")
-        .limit(1)
-        .maybeSingle();
-
-      if (integrationData?.people_research_webhook_url) {
-        console.log("[receive-company-results] Triggering people research...");
-        
-        // Update status to prospects_pending
-        await supabase
-          .from("research_results")
-          .update({ status: "prospects_pending" })
-          .eq("id", resultId);
-
-        try {
-          const peoplePayload = {
-            user_id,
-            company_domain,
-            company_data,
-            research_result_id: resultId,
-          };
-
-          const peopleResponse = await fetch(integrationData.people_research_webhook_url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(peoplePayload),
-          });
-
-          console.log("[receive-company-results] People webhook response:", peopleResponse.status);
-          
-        } catch (webhookError) {
-          console.error("[receive-company-results] People webhook error:", webhookError);
-          // Don't fail the whole request, just log the error
-        }
-      } else {
-        console.log("[receive-company-results] No people_research_webhook_url configured");
-      }
+        .eq("id", existingLegacy.id);
+      
+      console.log("[receive-company-results] Updated legacy record:", existingLegacy.id);
     }
 
     return new Response(
       JSON.stringify({ 
         received: true,
-        id: resultId,
-        status: status === "rejected" ? "rejected" : "company_complete",
-        next_step: status !== "rejected" ? "prospects_pending" : null,
+        id: insertedRecord.id,
+        company_research_id: insertedRecord.id,
+        status: status === "rejected" ? "failed" : "completed",
+        message: "Company research saved. Ready for prospect research.",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
