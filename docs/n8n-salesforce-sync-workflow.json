@@ -1,0 +1,298 @@
+{
+  "name": "Salesforce Contact Sync - SDR Research Tool",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "salesforce-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-receive-prospect",
+      "name": "Webhook: Receive Prospect Data",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 100],
+      "webhookId": "{{ env.WEBHOOK_ID }}",
+      "description": "Receives enriched prospect data from Lovable application"
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "query",
+        "sotql": "SELECT Id, Email FROM Contact WHERE Email = '{{ $json.email }}' AND AccountId = '{{ $json.salesforce_account_id }}'",
+        "options": {}
+      },
+      "id": "salesforce-query-contact",
+      "name": "Salesforce: Query Existing Contact",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 2,
+      "position": [550, 100],
+      "credentials": {
+        "salesforceOAuth2Api": "salesforce_oauth"
+      },
+      "description": "Check if Contact already exists in Salesforce with same email + account"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "{{ $node['salesforce-query-contact'].json.totalSize }}",
+              "operation": ">",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if-contact-exists",
+      "name": "IF: Contact Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 100],
+      "description": "Branch: if Contact already exists (totalSize > 0) or create new"
+    },
+    {
+      "parameters": {
+        "fieldMappings": {
+          "mappingFields": [
+            {
+              "fieldName": "contact_id",
+              "fieldValue": "{{ $node['salesforce-query-contact'].json.records[0].Id }}"
+            }
+          ]
+        }
+      },
+      "id": "use-existing-contact",
+      "name": "Set: Use Existing Contact ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1050, 50],
+      "description": "Extract Contact ID from query results"
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "create",
+        "fieldsToSet": "customObject",
+        "fieldsObject": {
+          "FirstName": "{{ $json.first_name }}",
+          "LastName": "{{ $json.last_name }}",
+          "Email": "{{ $json.email }}",
+          "Phone": "{{ $json.phone }}",
+          "MobilePhone": "{{ $json.mobile }}",
+          "Title": "{{ $json.title }}",
+          "AccountId": "{{ $json.salesforce_account_id }}",
+          "LinkedIn__c": "{{ $json.linkedin_url }}"
+        },
+        "options": {}
+      },
+      "id": "salesforce-create-contact",
+      "name": "Salesforce: Create Contact",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 2,
+      "position": [1050, 150],
+      "credentials": {
+        "salesforceOAuth2Api": "salesforce_oauth"
+      },
+      "description": "Create new Contact in Salesforce (if not exists)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "contact_id",
+              "name": "contact_id",
+              "value": "{{ $node['salesforce-create-contact'].json.id }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "extract-new-contact-id",
+      "name": "Set: Extract New Contact ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1300, 150],
+      "description": "Extract newly created Contact ID"
+    },
+    {
+      "parameters": {
+        "resource": "campaignMember",
+        "operation": "create",
+        "fieldsToSet": "customObject",
+        "fieldsObject": {
+          "CampaignId": "{{ $json.salesforce_campaign_id }}",
+          "ContactId": "{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}",
+          "Status": "Added"
+        },
+        "options": {}
+      },
+      "id": "salesforce-create-campaign-member",
+      "name": "Salesforce: Create CampaignMember",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 2,
+      "position": [1400, 100],
+      "credentials": {
+        "salesforceOAuth2Api": "salesforce_oauth"
+      },
+      "description": "Add Contact to Campaign"
+    },
+    {
+      "parameters": {
+        "url": "{{ env.SUPABASE_URL }}/rest/v1/prospects",
+        "method": "PATCH",
+        "headers": {
+          "Authorization": "Bearer {{ env.SUPABASE_KEY }}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "salesforce_contact_id": "{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}",
+          "salesforce_contact_url": "https://{{ env.SF_INSTANCE_URL }}/{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}",
+          "synced_at": "{{ $now.toISOString() }}",
+          "sync_status": "success"
+        }
+      },
+      "id": "http-update-supabase",
+      "name": "HTTP: Update Supabase Prospect",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1700, 100],
+      "description": "Update prospect record in Supabase with Salesforce Contact info"
+    },
+    {
+      "parameters": {
+        "respondWith": "firstSuccessfulMatch",
+        "responseBody": "{\n  \"status\": \"success\",\n  \"contact_id\": \"{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}\",\n  \"contact_url\": \"https://{{ env.SF_INSTANCE_URL }}/{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}\",\n  \"campaign_member_id\": \"{{ $node['salesforce-create-campaign-member'].json.id }}\"\n}",
+        "options": {}
+      },
+      "id": "response-success",
+      "name": "Respond: Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 100],
+      "description": "Return success response to Lovable"
+    },
+    {
+      "parameters": {
+        "respondWith": "firstSuccessfulMatch",
+        "responseBody": "{\n  \"status\": \"error\",\n  \"error\": \"{{ $error.message }}\",\n  \"timestamp\": \"{{ $now.toISOString() }}\"\n}",
+        "responseCode": 400,
+        "options": {}
+      },
+      "id": "response-error",
+      "name": "Respond: Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 250],
+      "description": "Return error response to Lovable"
+    }
+  ],
+  "connections": {
+    "webhook-receive-prospect": {
+      "main": [
+        [
+          {
+            "node": "salesforce-query-contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "salesforce-query-contact": {
+      "main": [
+        [
+          {
+            "node": "if-contact-exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "if-contact-exists": {
+      "main": [
+        [
+          {
+            "node": "use-existing-contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "salesforce-create-contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "use-existing-contact": {
+      "main": [
+        [
+          {
+            "node": "salesforce-create-campaign-member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "salesforce-create-contact": {
+      "main": [
+        [
+          {
+            "node": "extract-new-contact-id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract-new-contact-id": {
+      "main": [
+        [
+          {
+            "node": "salesforce-create-campaign-member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "salesforce-create-campaign-member": {
+      "main": [
+        [
+          {
+            "node": "http-update-supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "http-update-supabase": {
+      "main": [
+        [
+          {
+            "node": "response-success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "{{ env.N8N_INSTANCE_ID }}",
+    "desiredState": "active"
+  }
+}
