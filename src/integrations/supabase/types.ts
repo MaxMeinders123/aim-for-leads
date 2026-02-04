@@ -109,6 +109,68 @@ export type Database = {
           },
         ]
       }
+      company_research: {
+        Row: {
+          acquired_by: string | null
+          campaign_id: string | null
+          cloud_confidence: number | null
+          cloud_provider: string | null
+          company_domain: string
+          company_name: string | null
+          company_status: string | null
+          created_at: string
+          error_message: string | null
+          evidence_urls: string[] | null
+          id: string
+          raw_data: Json | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          acquired_by?: string | null
+          campaign_id?: string | null
+          cloud_confidence?: number | null
+          cloud_provider?: string | null
+          company_domain: string
+          company_name?: string | null
+          company_status?: string | null
+          created_at?: string
+          error_message?: string | null
+          evidence_urls?: string[] | null
+          id?: string
+          raw_data?: Json | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          acquired_by?: string | null
+          campaign_id?: string | null
+          cloud_confidence?: number | null
+          cloud_provider?: string | null
+          company_domain?: string
+          company_name?: string | null
+          company_status?: string | null
+          created_at?: string
+          error_message?: string | null
+          evidence_urls?: string[] | null
+          id?: string
+          raw_data?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_research_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contacts: {
         Row: {
           campaign_id: string
@@ -192,6 +254,68 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      prospect_research: {
+        Row: {
+          clay_response: Json | null
+          company_research_id: string
+          created_at: string
+          first_name: string | null
+          id: string
+          job_title: string | null
+          last_name: string | null
+          linkedin_url: string | null
+          pitch_type: string | null
+          priority: string | null
+          priority_reason: string | null
+          raw_data: Json | null
+          sent_to_clay: boolean
+          sent_to_clay_at: string | null
+          user_id: string
+        }
+        Insert: {
+          clay_response?: Json | null
+          company_research_id: string
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          job_title?: string | null
+          last_name?: string | null
+          linkedin_url?: string | null
+          pitch_type?: string | null
+          priority?: string | null
+          priority_reason?: string | null
+          raw_data?: Json | null
+          sent_to_clay?: boolean
+          sent_to_clay_at?: string | null
+          user_id: string
+        }
+        Update: {
+          clay_response?: Json | null
+          company_research_id?: string
+          created_at?: string
+          first_name?: string | null
+          id?: string
+          job_title?: string | null
+          last_name?: string | null
+          linkedin_url?: string | null
+          pitch_type?: string | null
+          priority?: string | null
+          priority_reason?: string | null
+          raw_data?: Json | null
+          sent_to_clay?: boolean
+          sent_to_clay_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_research_company_research_id_fkey"
+            columns: ["company_research_id"]
+            isOneToOne: false
+            referencedRelation: "company_research"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       research_results: {
         Row: {

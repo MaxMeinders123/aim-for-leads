@@ -4,32 +4,55 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, Building2, Users, AlertCircle, CheckCircle2, Clock, Cloud, ExternalLink, Globe, Linkedin } from 'lucide-react';
+import { Loader2, Search, Building2, Users, AlertCircle, CheckCircle2, Clock, Play } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppStore } from '@/stores/appStore';
 import { toast } from 'sonner';
 import { AppLayout } from '@/components/AppLayout';
+import { CompanyResearchCard } from '@/components/research/CompanyResearchCard';
+import { ProspectTable } from '@/components/research/ProspectTable';
 
-interface ResearchResult {
+interface CompanyResearch {
   id: string;
   user_id: string;
   company_domain: string;
-  status: 'processing' | 'company_complete' | 'prospects_pending' | 'completed' | 'rejected';
-  company_data: any;
-  prospect_data: any;
-  clay_triggered: boolean;
-  clay_response: any;
+  company_name: string | null;
+  status: string;
+  company_status: string | null;
+  acquired_by: string | null;
+  cloud_provider: string | null;
+  cloud_confidence: number | null;
+  evidence_urls: string[] | null;
+  raw_data: any;
   error_message: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface ProspectResearch {
+  id: string;
+  company_research_id: string;
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  job_title: string | null;
+  linkedin_url: string | null;
+  priority: string | null;
+  priority_reason: string | null;
+  pitch_type: string | null;
+  sent_to_clay: boolean;
+  sent_to_clay_at: string | null;
+  created_at: string;
 }
 
 const ResearchSystem = () => {
   const { integrations, user } = useAppStore();
   const [companyDomain, setCompanyDomain] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentResult, setCurrentResult] = useState<ResearchResult | null>(null);
+  const [isCompanyLoading, setIsCompanyLoading] = useState(false);
+  const [isProspectLoading, setIsProspectLoading] = useState(false);
+  const [companyResearch, setCompanyResearch] = useState<CompanyResearch | null>(null);
+  const [prospects, setProspects] = useState<ProspectResearch[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Generate a unique user_id if not provided
@@ -37,91 +60,121 @@ const ResearchSystem = () => {
     if (user?.id) {
       setCurrentUserId(user.id);
     } else {
-      // Generate a session-based ID for anonymous users
       const sessionId = sessionStorage.getItem('research_user_id') || `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       sessionStorage.setItem('research_user_id', sessionId);
       setCurrentUserId(sessionId);
     }
   }, [user]);
 
-  // Real-time subscription to research_results filtered by user_id
+  // Real-time subscription to company_research
   useEffect(() => {
     if (!currentUserId) return;
 
     console.log('[ResearchSystem] Setting up realtime subscription for user:', currentUserId);
 
-    const channel = supabase
-      .channel(`research_results_${currentUserId}`)
+    const companyChannel = supabase
+      .channel(`company_research_${currentUserId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'research_results',
+          table: 'company_research',
           filter: `user_id=eq.${currentUserId}`,
         },
         (payload) => {
-          console.log('[ResearchSystem] Realtime update:', payload);
+          console.log('[ResearchSystem] Company research update:', payload);
           
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const newData = payload.new as ResearchResult;
-            setCurrentResult(newData);
+            const newData = payload.new as CompanyResearch;
+            setCompanyResearch(newData);
             
             if (newData.status === 'completed') {
-              toast.success('Research completed!');
-              setIsLoading(false);
-            } else if (newData.status === 'rejected') {
-              toast.error('Research was rejected');
-              setIsLoading(false);
+              toast.success('Company research completed!');
+              setIsCompanyLoading(false);
+            } else if (newData.status === 'failed') {
+              toast.error('Company research failed');
+              setIsCompanyLoading(false);
             }
           }
         }
       )
-      .subscribe((status) => {
-        console.log('[ResearchSystem] Subscription status:', status);
-      });
+      .subscribe();
 
     return () => {
-      console.log('[ResearchSystem] Cleaning up subscription');
-      supabase.removeChannel(channel);
+      supabase.removeChannel(companyChannel);
     };
   }, [currentUserId]);
 
-  const handleStartResearch = async () => {
+  // Real-time subscription to prospect_research
+  useEffect(() => {
+    if (!companyResearch?.id) return;
+
+    console.log('[ResearchSystem] Setting up prospect subscription for company:', companyResearch.id);
+
+    const prospectChannel = supabase
+      .channel(`prospect_research_${companyResearch.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'prospect_research',
+          filter: `company_research_id=eq.${companyResearch.id}`,
+        },
+        (payload) => {
+          console.log('[ResearchSystem] Prospect research update:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            const newProspect = payload.new as ProspectResearch;
+            setProspects(prev => [...prev, newProspect]);
+            setIsProspectLoading(false);
+          } else if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as ProspectResearch;
+            setProspects(prev => prev.map(p => p.id === updated.id ? updated : p));
+          }
+        }
+      )
+      .subscribe();
+
+    // Load existing prospects
+    loadProspects(companyResearch.id);
+
+    return () => {
+      supabase.removeChannel(prospectChannel);
+    };
+  }, [companyResearch?.id]);
+
+  const loadProspects = async (companyResearchId: string) => {
+    const { data, error } = await supabase
+      .from('prospect_research')
+      .select('*')
+      .eq('company_research_id', companyResearchId)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setProspects(data as ProspectResearch[]);
+    }
+  };
+
+  const handleStartCompanyResearch = async () => {
     if (!companyDomain.trim()) {
       toast.error('Please enter a company domain');
       return;
     }
 
     if (!integrations.company_research_webhook_url) {
-      toast.error('Please configure your n8n webhook URL in Settings first');
+      toast.error('Please configure your Company Research webhook URL in Settings first');
       return;
     }
 
-    setIsLoading(true);
+    setIsCompanyLoading(true);
     setError(null);
-    setCurrentResult(null);
+    setCompanyResearch(null);
+    setProspects([]);
 
     try {
-      // Create initial processing record
-      const { data: initialRecord, error: insertError } = await supabase
-        .from('research_results')
-        .insert({
-          user_id: currentUserId,
-          company_domain: companyDomain.trim(),
-          status: 'processing',
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        throw new Error(`Failed to create research record: ${insertError.message}`);
-      }
-
-      setCurrentResult(initialRecord as ResearchResult);
-
-      // Send to n8n webhook
-      console.log('[ResearchSystem] Sending to n8n webhook...');
+      console.log('[ResearchSystem] Starting company research...');
       
       const response = await fetch(integrations.company_research_webhook_url, {
         method: 'POST',
@@ -136,68 +189,69 @@ const ResearchSystem = () => {
         throw new Error(`Webhook failed: ${response.status} ${response.statusText}`);
       }
 
-      const responseData = await response.text();
-      console.log('[ResearchSystem] n8n response:', responseData);
-
-      toast.success('Research started! Waiting for results...');
-      // Loading will be set to false by realtime subscription when results arrive
+      toast.success('Company research started! Waiting for results...');
 
     } catch (err: any) {
       console.error('[ResearchSystem] Error:', err);
       setError(err.message);
-      setIsLoading(false);
+      setIsCompanyLoading(false);
       toast.error(err.message);
+    }
+  };
+
+  const handleStartProspectResearch = async () => {
+    if (!companyResearch) {
+      toast.error('Complete company research first');
+      return;
+    }
+
+    if (!integrations.people_research_webhook_url) {
+      toast.error('Please configure your People Research webhook URL in Settings first');
+      return;
+    }
+
+    setIsProspectLoading(true);
+
+    try {
+      console.log('[ResearchSystem] Starting prospect research...');
+      
+      const response = await fetch(integrations.people_research_webhook_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUserId,
+          company_domain: companyResearch.company_domain,
+          company_research_id: companyResearch.id,
+          company_data: companyResearch.raw_data,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook failed: ${response.status} ${response.statusText}`);
+      }
+
+      toast.success('Prospect research started! Waiting for results...');
+
+    } catch (err: any) {
+      console.error('[ResearchSystem] Error:', err);
+      toast.error(err.message);
+      setIsProspectLoading(false);
     }
   };
 
   const handleClear = () => {
     setCompanyDomain('');
-    setCurrentResult(null);
+    setCompanyResearch(null);
+    setProspects([]);
     setError(null);
-    setIsLoading(false);
+    setIsCompanyLoading(false);
+    setIsProspectLoading(false);
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'processing':
-      case 'prospects_pending':
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-      case 'company_complete':
-        return <CheckCircle2 className="h-4 w-4 text-blue-500" />;
-      case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case 'rejected':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return null;
+  const refreshProspects = () => {
+    if (companyResearch?.id) {
+      loadProspects(companyResearch.id);
     }
-  };
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      processing: 'Processing Company...',
-      company_complete: 'Company Complete',
-      prospects_pending: 'Finding Prospects...',
-      completed: 'Completed',
-      rejected: 'Rejected',
-    };
-    return labels[status] || status;
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-      processing: 'secondary',
-      company_complete: 'outline',
-      prospects_pending: 'secondary',
-      completed: 'default',
-      rejected: 'destructive',
-    };
-    return (
-      <Badge variant={variants[status] || 'outline'} className="flex items-center gap-1">
-        {getStatusIcon(status)}
-        {getStatusLabel(status)}
-      </Badge>
-    );
   };
 
   return (
@@ -206,7 +260,7 @@ const ResearchSystem = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Research System</h1>
           <p className="text-muted-foreground mt-2">
-            Enter a company domain to start research. Results will update in real-time.
+            Enter a company domain to start research. Company research runs first, then prospect research.
           </p>
         </div>
 
@@ -218,7 +272,7 @@ const ResearchSystem = () => {
               Start Research
             </CardTitle>
             <CardDescription>
-              Enter a company domain and click Start to begin research
+              Enter a company domain to begin the research workflow
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -229,40 +283,29 @@ const ResearchSystem = () => {
                 placeholder="example.com"
                 value={companyDomain}
                 onChange={(e) => setCompanyDomain(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="userId">User ID (auto-generated)</Label>
-              <Input
-                id="userId"
-                value={currentUserId}
-                onChange={(e) => setCurrentUserId(e.target.value)}
-                disabled={isLoading}
-                className="font-mono text-sm"
+                disabled={isCompanyLoading}
               />
             </div>
 
             <div className="flex gap-3">
               <Button
-                onClick={handleStartResearch}
-                disabled={isLoading || !companyDomain.trim()}
+                onClick={handleStartCompanyResearch}
+                disabled={isCompanyLoading || !companyDomain.trim()}
                 className="flex-1"
               >
-                {isLoading ? (
+                {isCompanyLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
+                    Processing Company...
                   </>
                 ) : (
                   <>
-                    <Search className="mr-2 h-4 w-4" />
-                    Start Research
+                    <Building2 className="mr-2 h-4 w-4" />
+                    Start Company Research
                   </>
                 )}
               </Button>
-              <Button variant="outline" onClick={handleClear} disabled={isLoading}>
+              <Button variant="outline" onClick={handleClear} disabled={isCompanyLoading || isProspectLoading}>
                 Clear
               </Button>
             </div>
@@ -275,237 +318,49 @@ const ResearchSystem = () => {
           </CardContent>
         </Card>
 
-        {/* Status & Results */}
-        {currentResult && (
+        {/* Company Research Results */}
+        {companyResearch && (
           <div className="space-y-6">
-            {/* Status Card */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Research Status</CardTitle>
-                  {getStatusBadge(currentResult.status)}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Domain:</span>
-                    <span className="ml-2 font-medium">{currentResult.company_domain}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">User ID:</span>
-                    <span className="ml-2 font-mono text-xs">{currentResult.user_id}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Created:</span>
-                    <span className="ml-2">{new Date(currentResult.created_at).toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Clay Triggered:</span>
-                    <span className="ml-2">{currentResult.clay_triggered ? 'Yes' : 'No'}</span>
-                  </div>
-                </div>
+            <CompanyResearchCard 
+              company={companyResearch} 
+              showJustReceived={companyResearch.status === 'completed' && prospects.length === 0}
+            />
 
-                {currentResult.status === 'rejected' && currentResult.error_message && (
-                  <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                    <p className="text-destructive font-medium">Rejected</p>
-                    <p className="text-sm text-destructive/80">{currentResult.error_message}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Company Data Card - show as soon as company_data exists */}
-            {currentResult.company_data && (
+            {/* Start Prospect Research Button */}
+            {companyResearch.status === 'completed' && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5" />
-                    Company Information
-                    {currentResult.status === 'company_complete' && (
-                      <Badge variant="outline" className="ml-2">Just received</Badge>
+                <CardContent className="pt-6">
+                  <Button
+                    onClick={handleStartProspectResearch}
+                    disabled={isProspectLoading}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {isProspectLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Finding Prospects...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="mr-2 h-4 w-4" />
+                        Start Prospect Research
+                      </>
                     )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Company Status */}
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {currentResult.company_data.company && (
-                      <span className="font-semibold text-lg">{currentResult.company_data.company}</span>
-                    )}
-                    {currentResult.company_data.company_status && (
-                      <Badge 
-                        variant={currentResult.company_data.company_status === 'Operating' ? 'default' : 'secondary'}
-                        className={currentResult.company_data.company_status === 'Operating' 
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
-                          : currentResult.company_data.company_status === 'Acquired'
-                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                          : ''}
-                      >
-                        {currentResult.company_data.company_status}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Acquired By Info */}
-                  {currentResult.company_data.acquiredBy && (
-                    <p className="text-sm text-muted-foreground">
-                      Acquired by <span className="font-medium text-foreground">{currentResult.company_data.acquiredBy}</span>
-                      {currentResult.company_data.effectiveDate && ` (${currentResult.company_data.effectiveDate})`}
-                    </p>
-                  )}
-
-                  {/* Cloud Preference */}
-                  {currentResult.company_data.cloud_preference && (
-                    <div className="p-3 bg-muted rounded-lg">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Cloud className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">Cloud Provider</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{currentResult.company_data.cloud_preference.provider}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {currentResult.company_data.cloud_preference.confidence}% confidence
-                        </Badge>
-                      </div>
-                      
-                      {/* Evidence URLs */}
-                      {currentResult.company_data.cloud_preference.evidence_urls?.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          <p className="text-xs text-muted-foreground">Evidence:</p>
-                          <div className="flex flex-wrap gap-2">
-                            {currentResult.company_data.cloud_preference.evidence_urls.slice(0, 3).map((url: string, i: number) => (
-                              <a
-                                key={i}
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-primary hover:underline flex items-center gap-1"
-                              >
-                                {url.includes('linkedin') ? <Linkedin className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
-                                Source {i + 1}
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  </Button>
+                  <p className="text-sm text-muted-foreground text-center mt-2">
+                    Company research is complete. Click above to find prospects.
+                  </p>
                 </CardContent>
               </Card>
             )}
 
-            {/* Prospects Card - show as soon as prospect_data exists */}
-            {currentResult.prospect_data && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Prospects
-                    {currentResult.prospect_data.contacts && (
-                      <Badge variant="secondary">{currentResult.prospect_data.contacts.length} contacts</Badge>
-                    )}
-                    {currentResult.status === 'completed' && (
-                      <Badge variant="default" className="ml-2">Complete</Badge>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {/* Handle contacts array from prospect_data */}
-                  {currentResult.prospect_data.contacts && Array.isArray(currentResult.prospect_data.contacts) ? (
-                    <div className="space-y-3">
-                      {currentResult.prospect_data.contacts.map((contact: any, index: number) => (
-                        <div key={index} className="p-4 border rounded-lg bg-card hover:bg-muted/50 transition-colors">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              {/* Name and Priority */}
-                              <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <span className="font-medium">
-                                  {contact.first_name} {contact.last_name}
-                                </span>
-                                <Badge 
-                                  className={
-                                    contact.priority === 'High' 
-                                      ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                                      : contact.priority === 'Medium'
-                                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                      : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
-                                  }
-                                >
-                                  {contact.priority}
-                                </Badge>
-                                {contact.pitch_type && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {contact.pitch_type}
-                                  </Badge>
-                                )}
-                              </div>
-                              
-                              {/* Job Title */}
-                              {contact.job_title && (
-                                <p className="text-sm text-muted-foreground mb-2">{contact.job_title}</p>
-                              )}
-                              
-                              {/* Priority Reason */}
-                              {contact.priority_reason && (
-                                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                                  {contact.priority_reason}
-                                </p>
-                              )}
-                            </div>
-                            
-                            {/* LinkedIn Link */}
-                            {contact.linkedin && (
-                              <a
-                                href={contact.linkedin.startsWith('http') ? contact.linkedin : `https://${contact.linkedin}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:text-primary/80 shrink-0 flex items-center gap-1 text-sm"
-                              >
-                                <Linkedin className="h-4 w-4" />
-                                <span className="hidden sm:inline">Profile</span>
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : Array.isArray(currentResult.prospect_data) ? (
-                    <div className="space-y-3">
-                      {currentResult.prospect_data.map((prospect: any, index: number) => (
-                        <div key={index} className="p-3 border rounded-lg">
-                          <p className="font-medium">{prospect.name || prospect.first_name + ' ' + prospect.last_name}</p>
-                          {prospect.title && <p className="text-sm text-muted-foreground">{prospect.title}</p>}
-                          {prospect.email && <p className="text-sm">{prospect.email}</p>}
-                          {prospect.linkedin && (
-                            <a href={prospect.linkedin} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
-                              LinkedIn Profile
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <pre className="p-4 bg-muted rounded-md overflow-auto text-sm max-h-64">
-                      {JSON.stringify(currentResult.prospect_data, null, 2)}
-                    </pre>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Clay Response */}
-            {currentResult.clay_triggered && currentResult.clay_response && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Clay Integration Response</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <pre className="p-4 bg-muted rounded-md overflow-auto text-sm max-h-32">
-                    {JSON.stringify(currentResult.clay_response, null, 2)}
-                  </pre>
-                </CardContent>
-              </Card>
+            {/* Prospects Table */}
+            {prospects.length > 0 && (
+              <ProspectTable 
+                prospects={prospects} 
+                onProspectUpdated={refreshProspects}
+              />
             )}
           </div>
         )}
@@ -517,7 +372,7 @@ const ResearchSystem = () => {
             <CardDescription>Webhook URLs and endpoints for your n8n workflows</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 text-sm">
-            {/* Step 1: Frontend to n8n */}
+            {/* Step 1: Frontend to n8n Company */}
             <div className="p-4 border rounded-lg bg-muted/30">
               <p className="font-semibold text-base mb-2">Step 1: Frontend → n8n (Company Research)</p>
               <p className="text-muted-foreground mb-2">Your n8n webhook receives the initial request:</p>
@@ -530,79 +385,71 @@ const ResearchSystem = () => {
               </pre>
             </div>
             
-            {/* Step 2: n8n to Unified Results Endpoint */}
+            {/* Step 2: n8n to Company Results Endpoint */}
             <div className="p-4 border rounded-lg bg-muted/30">
-              <p className="font-semibold text-base mb-2">Step 2: n8n → receive-research-results (Company)</p>
+              <p className="font-semibold text-base mb-2">Step 2: n8n → receive-company-results</p>
               <p className="text-muted-foreground mb-2">After company research, POST results here:</p>
               <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
-                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-research-results
+                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results
               </code>
               <p className="mt-2 text-muted-foreground">Payload:</p>
               <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
 {`{
   "user_id": "{{$json.body.user_id}}",
   "company_domain": "{{$json.body.company_domain}}",
-  "type": "company",
-  "status": "completed",
-  "text": "{{$json.llm_output}}"
+  "company": "{{$json.llm_output}}",
+  "status": "completed"
 }`}
               </pre>
-              <p className="mt-2 text-xs text-muted-foreground">
-                💡 Send raw LLM output in "text" - the edge function handles JSON parsing
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                ⚡ This automatically triggers People Research webhook
-              </p>
             </div>
 
-            {/* Step 3: n8n People Research to Prospect Results */}
+            {/* Step 3: Frontend triggers Prospect Research */}
             <div className="p-4 border rounded-lg bg-muted/30">
-              <p className="font-semibold text-base mb-2">Step 3: n8n → receive-research-results (Prospects)</p>
-              <p className="text-muted-foreground mb-2">People Research webhook URL (configured in Settings):</p>
+              <p className="font-semibold text-base mb-2">Step 3: Frontend → n8n (Prospect Research)</p>
+              <p className="text-muted-foreground mb-2">User clicks "Start Prospect Research" button, sending to:</p>
               <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
                 {integrations.people_research_webhook_url || 'Not configured - set in Settings'}
               </code>
-              <p className="mt-2 text-muted-foreground">After people research, POST results to same endpoint:</p>
-              <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
-                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-research-results
-              </code>
-              <p className="mt-2 text-muted-foreground">Payload:</p>
-              <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
-{`{
-  "user_id": "{{$json.body.user_id}}",
-  "company_domain": "{{$json.body.company_domain}}",
-  "research_result_id": "{{$json.body.research_result_id}}",
-  "type": "prospect",
-  "status": "completed",
-  "text": "{{$json.llm_output}}"
-}`}
-              </pre>
-              <p className="mt-2 text-xs text-muted-foreground">
-                💡 Send raw LLM output in "text" - the edge function handles JSON parsing
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                ⚡ This automatically triggers Clay webhook on completion
-              </p>
-            </div>
-
-            {/* Clay Integration */}
-            <div className="p-4 border rounded-lg bg-muted/30">
-              <p className="font-semibold text-base mb-2">Step 4: Auto → Clay (on completion)</p>
-              <p className="text-muted-foreground mb-2">Clay webhook URL:</p>
-              <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
-                {integrations.clay_webhook_url || 'Not configured - set in Settings'}
-              </code>
-              <p className="mt-2 text-muted-foreground">Payload sent automatically:</p>
+              <p className="mt-2 text-muted-foreground">Payload includes company_research_id:</p>
               <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
 {`{
   "user_id": "...",
   "company_domain": "...",
-  "company_data": { ... },
-  "prospect_data": [ ... ],
-  "research_result_id": "uuid",
-  "triggered_at": "ISO timestamp"
+  "company_research_id": "uuid",
+  "company_data": { ... }
 }`}
               </pre>
+            </div>
+
+            {/* Step 4: n8n to Prospect Results Endpoint */}
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <p className="font-semibold text-base mb-2">Step 4: n8n → receive-prospect-results</p>
+              <p className="text-muted-foreground mb-2">After prospect research, POST results here:</p>
+              <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
+                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results
+              </code>
+              <p className="mt-2 text-muted-foreground">Payload:</p>
+              <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
+{`{
+  "user_id": "{{$json.body.user_id}}",
+  "company_domain": "{{$json.body.company_domain}}",
+  "company_research_id": "{{$json.body.company_research_id}}",
+  "prospect": "{{$json.llm_output}}",
+  "status": "completed"
+}`}
+              </pre>
+            </div>
+
+            {/* Step 5: Individual Clay Sending */}
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <p className="font-semibold text-base mb-2">Step 5: Send Prospects to Clay (Individual)</p>
+              <p className="text-muted-foreground mb-2">Use checkboxes to select prospects, then click "Send to Clay"</p>
+              <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
+                {integrations.clay_webhook_url || 'Not configured - set in Settings'}
+              </code>
+              <p className="mt-2 text-xs text-muted-foreground">
+                ✅ Each prospect is sent individually with full company context
+              </p>
             </div>
           </CardContent>
         </Card>
