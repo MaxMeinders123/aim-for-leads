@@ -1,120 +1,144 @@
 
-# Accept Raw LLM Text in Edge Functions
+# Fix Edge Function to Handle Actual n8n Payloads
 
-## Overview
-Update both `receive-company-results` and `receive-prospect-results` edge functions to accept a `text` field containing raw LLM output (potentially wrapped in markdown code fences), parse it server-side, and store the structured JSON in the database.
+## Problem Summary
+The `receive-research-results` edge function expects `text` and `type` fields, but n8n is sending:
+- Company data in a `" company"` field (with leading space) or `"company"` field
+- Prospect data in a `"prospect"` field
 
-## Why This Approach
-- **Simpler n8n configuration**: Just send strings, no need to fight with JSON validation in n8n
-- **Consistent parsing**: Edge Functions handle all markdown stripping and JSON parsing
-- **Error handling**: Better control over parsing errors at the server level
+Both are being processed as "company" type because the edge function defaults to "company" when no `type` field is present.
 
-## Current vs New Payload Structure
+## Solution
+Update the edge function to:
+1. Auto-detect the research type based on which field is present (`company`, ` company`, or `prospect`)
+2. Extract the raw text from whichever field is found
+3. Parse and save to the correct database column (`company_data` or `prospect_data`)
+4. Update the UI to properly display the structured data
 
-### receive-company-results
+## Changes Required
 
-**Current payload (expects pre-parsed JSON):**
-```json
-{
-  "user_id": "abc123",
-  "company_domain": "example.com",
-  "company_data": { "name": "...", "industry": "..." },
-  "status": "completed",
-  "error_message": null
-}
-```
+### 1. Edge Function (`supabase/functions/receive-research-results/index.ts`)
 
-**New payload (accepts raw text):**
-```json
-{
-  "user_id": "abc123",
-  "company_domain": "example.com",
-  "text": "```json\n{\"name\": \"Example Corp\", \"industry\": \"Tech\"}\n```",
-  "status": "completed",
-  "error_message": null
-}
-```
-
-### receive-prospect-results
-
-**Current payload:**
-```json
-{
-  "user_id": "abc123",
-  "company_domain": "example.com",
-  "prospect_data": [{ "name": "...", "title": "..." }],
-  "research_result_id": "uuid",
-  "status": "completed"
-}
-```
-
-**New payload:**
-```json
-{
-  "user_id": "abc123",
-  "company_domain": "example.com",
-  "text": "```json\n[{\"name\": \"John Doe\", \"title\": \"CTO\"}]\n```",
-  "research_result_id": "uuid",
-  "status": "completed"
-}
-```
-
-## Implementation Details
-
-### Parsing Helper Function
-Both edge functions will use the same parsing logic:
+Update the payload extraction logic to auto-detect fields:
 
 ```text
-+------------------+     +----------------------+     +------------------+
-| Raw LLM text     | --> | Strip ```json fences | --> | Parse to JSON    |
-| from n8n         |     | and trim whitespace  |     | (object or array)|
-+------------------+     +----------------------+     +------------------+
++---------------------+     +------------------------+     +------------------+
+| Incoming Payload    | --> | Detect field name      | --> | Extract & Parse  |
+| company/prospect/?  |     | (company, prospect,    |     | raw text to JSON |
++---------------------+     | or text + type)        |     +------------------+
 ```
 
-```typescript
-function parseTextToJson(text?: string): any {
-  if (!text) return null;
-  
-  const cleaned = text
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/g, '')
-    .trim();
-  
-  if (!cleaned) return null;
-  
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    console.error("Failed to parse text as JSON:", e);
-    return null;
-  }
+**New detection logic:**
+- Check for `prospect` field → treat as prospect research
+- Check for `company` or ` company` (with space) field → treat as company research  
+- Fall back to `text` + `type` for explicit control
+
+**Key changes:**
+- Add field detection at the start of processing
+- Normalize field names (trim spaces)
+- Auto-determine type based on field presence
+- Continue using the same database update logic
+
+### 2. UI Updates (`src/pages/ResearchSystem.tsx`)
+
+Improve the company and prospect data display cards:
+
+**Company Information Card:**
+- Show Company Status (Operating/Acquired)
+- Show Cloud Provider preference with confidence
+- Show Website and LinkedIn links
+- Show evidence URLs
+
+**Prospects Card:**
+- Show Name (first_name + last_name)
+- Show Job Title
+- Show LinkedIn link
+- Show Priority badge (High/Medium/Low)
+- Show Priority Reason
+
+## Updated Payload Formats Supported
+
+After this change, the edge function will accept ANY of these formats:
+
+**Format 1: Current n8n company payload**
+```json
+{
+  "user_id": "...",
+  "company_domain": "klm",
+  "company": "```json\n{...}\n```"
 }
 ```
 
-### Changes to receive-company-results
+**Format 2: Current n8n prospect payload**
+```json
+{
+  "user_id": "...",
+  "company_domain": "klm",
+  "prospect": "```json\n{...}\n```"
+}
+```
 
-1. Update destructuring to extract `text` instead of `company_data`
-2. Add parsing logic to convert `text` to `company_data`
-3. Use parsed `company_data` in database operations
-4. Continue passing parsed `company_data` to the people research webhook
+**Format 3: Explicit type (still supported)**
+```json
+{
+  "user_id": "...",
+  "company_domain": "klm",
+  "type": "company",
+  "text": "```json\n{...}\n```"
+}
+```
 
-### Changes to receive-prospect-results
+## Research Flow Diagram
 
-1. Update destructuring to extract `text` instead of `prospect_data`
-2. Add parsing logic to convert `text` to `prospect_data`
-3. Use parsed `prospect_data` in database operations
-4. Continue passing parsed `prospect_data` to Clay webhook
+```text
+    Frontend                    n8n                     Edge Function              Database
+       |                         |                            |                       |
+       |---[Start Research]----->|                            |                       |
+       |                         |                            |                       |
+       |                   [Company Research]                 |                       |
+       |                         |                            |                       |
+       |                         |---{ company: "..." }------>|                       |
+       |                         |                            |---[company_data]----->|
+       |                         |                            |   status: company_complete
+       |<---[realtime update: company_data]---------------------------------------|
+       |                         |                            |                       |
+       |                         |<---[Trigger People]--------|                       |
+       |                         |                            |                       |
+       |                   [Prospect Research]                |                       |
+       |                         |                            |                       |
+       |                         |---{ prospect: "..." }----->|                       |
+       |                         |                            |---[prospect_data]--->|
+       |                         |                            |   status: completed   |
+       |<---[realtime update: prospect_data]--------------------------------------|
+       |                         |                            |                       |
+```
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/receive-company-results/index.ts` | Add text parsing, use parsed company_data |
-| `supabase/functions/receive-prospect-results/index.ts` | Add text parsing, use parsed prospect_data |
+| `supabase/functions/receive-research-results/index.ts` | Auto-detect `company`/`prospect` fields, extract text from correct field |
+| `src/pages/ResearchSystem.tsx` | Improve company and prospect card displays with structured data |
 
-## Summary
-- Both endpoints will accept `text` (raw string) instead of pre-parsed JSON
-- Parsing happens server-side with markdown fence stripping
-- n8n can simply pass the LLM response as-is without JSON validation
-- Failed parsing results in `null` data (graceful degradation)
+## Technical Details
+
+### Edge Function Field Detection
+```typescript
+// Detect which field contains the raw text and determine type
+const rawText = body.prospect || body.company || body[" company"] || body.text;
+const detectedType = body.prospect ? "prospect" 
+  : (body.company || body[" company"]) ? "company" 
+  : (body.type || "company");
+```
+
+### UI Company Card Display
+- Status badge: Operating (green) / Acquired (yellow)
+- Cloud preference with confidence percentage
+- Links to LinkedIn and website
+- Evidence URLs as clickable list
+
+### UI Prospect Card Display
+- Full name with job title
+- Priority badge with color coding (High=red, Medium=yellow, Low=gray)
+- LinkedIn profile link
+- Expandable priority reason text
