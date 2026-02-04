@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { ResearchCompanyCard } from '@/components/research/ResearchCompanyCard';
 import { supabase } from '@/integrations/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { Contact } from '@/stores/appStore';
 
 // Call webhook via edge function proxy to avoid CORS
 // Uses AbortController with extended timeout for long-running AI research
@@ -195,6 +196,62 @@ const researchSteps = [
   { id: 'people', label: 'People', icon: Users },
 ];
 
+// Push researched contacts to the main contacts list
+const pushProspectsToContacts = async (
+  companyId: string,
+  companyName: string,
+  userId: string,
+  selectedCampaignId: string | undefined,
+  companiesProgress: any[],
+  addContacts: (contacts: Contact[]) => void
+) => {
+  try {
+    // Find the company's research data
+    const companyProgress = companiesProgress.find(p => p.companyId === companyId);
+    if (!companyProgress || !companyProgress.company_research_id) {
+      toast.error('Company research data not found');
+      return;
+    }
+
+    // Fetch prospects from the database
+    const { data: prospects, error } = await supabase
+      .from('prospect_research')
+      .select('*')
+      .eq('company_research_id', companyProgress.company_research_id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    if (!prospects || prospects.length === 0) {
+      toast.info('No prospects found for this company');
+      return;
+    }
+
+    // Transform prospects to Contact format
+    const newContacts: Contact[] = prospects.map(p => ({
+      id: p.id,
+      campaign_id: selectedCampaignId || '',
+      company_id: companyId,
+      company_name: companyName,
+      name: `${p.first_name} ${p.last_name}`.trim(),
+      title: p.job_title || undefined,
+      email: p.email || undefined,
+      phone: p.phone || undefined,
+      linkedin_url: p.linkedin_url || undefined,
+      priority: (p.priority || 'low') as 'high' | 'medium' | 'low',
+      selected: false,
+    }));
+
+    // Add to contacts store
+    addContacts(newContacts);
+
+    toast.success(`Added ${newContacts.length} contacts from ${companyName}`);
+  } catch (error: any) {
+    console.error('Error pushing prospects to contacts:', error);
+    toast.error(`Failed to push contacts: ${error.message}`);
+  }
+};
+
 export default function ResearchProgress() {
   const navigate = useNavigate();
   const {
@@ -205,6 +262,7 @@ export default function ResearchProgress() {
     selectedCampaign,
     integrations,
     user,
+    addContacts,
   } = useAppStore();
 
   const {
@@ -233,6 +291,18 @@ export default function ResearchProgress() {
       return next;
     });
   };
+
+  // Push researched contacts from a company to the main contacts list
+  const handlePushToContacts = useCallback(async (companyId: string, companyName: string) => {
+    await pushProspectsToContacts(
+      companyId,
+      companyName,
+      user?.id || '',
+      selectedCampaign?.id,
+      companiesProgress,
+      addContacts
+    );
+  }, [user?.id, selectedCampaign?.id, companiesProgress, addContacts]);
 
   // Retry a specific step for a company
   const retryStep = useCallback(async (companyId: string, stepToRetry: 'company' | 'people' | 'clay') => {
@@ -547,6 +617,66 @@ export default function ResearchProgress() {
     };
   }, [user?.id, companies, updateCompanyProgress]);
 
+  // Persist research progress to localStorage
+  useEffect(() => {
+    const RESEARCH_STATE_KEY = `research_progress_${selectedCampaign?.id}`;
+    localStorage.setItem(RESEARCH_STATE_KEY, JSON.stringify(researchProgress));
+  }, [researchProgress, selectedCampaign?.id]);
+
+  // Load existing prospects from database when component mounts or when companies have research IDs
+  useEffect(() => {
+    const loadExistingProspects = async () => {
+      if (!user?.id || companiesProgress.length === 0) return;
+
+      for (const progress of companiesProgress) {
+        // Skip if already has people data
+        if (progress.peopleData?.contacts && progress.peopleData.contacts.length > 0) {
+          continue;
+        }
+
+        // Skip if no company_research_id
+        if (!progress.company_research_id) {
+          continue;
+        }
+
+        try {
+          const { data: prospects } = await supabase
+            .from('prospect_research')
+            .select('*')
+            .eq('company_research_id', progress.company_research_id)
+            .order('created_at', { ascending: false });
+
+          if (prospects && prospects.length > 0) {
+            // Convert database prospects to ResearchContact format
+            const contacts = prospects.map(p => ({
+              first_name: p.first_name || '',
+              last_name: p.last_name || '',
+              job_title: p.job_title || '',
+              title: p.job_title || '',
+              pitch_type: p.pitch_type || '',
+              linkedin: p.linkedin_url || '',
+              priority: (p.priority || 'Medium') as 'High' | 'Medium' | 'Low',
+              priority_reason: p.priority_reason || '',
+            }));
+
+            updateCompanyProgress(progress.companyId, {
+              step: progress.step === 'people' ? 'complete' : progress.step,
+              peopleData: {
+                status: 'completed',
+                company: progress.companyName,
+                contacts,
+              },
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to load prospects for ${progress.companyName}:`, error);
+        }
+      }
+    };
+
+    loadExistingProspects();
+  }, [user?.id, updateCompanyProgress, companiesProgress]);
+
   const handleStop = () => {
     setResearchProgress({ isRunning: false });
     isProcessingRef.current = false;
@@ -627,6 +757,7 @@ export default function ResearchProgress() {
                 onToggleExpand={() => toggleExpanded(companyProgress.companyId)}
                 getStepStatus={getStepStatus}
                 onRetryStep={retryStep}
+                onPushToContacts={handlePushToContacts}
               />
             ))}
           </div>

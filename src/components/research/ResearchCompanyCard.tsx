@@ -1,4 +1,4 @@
-import { Building2, Users, Check, Loader2, AlertCircle, Cloud, ChevronDown, ChevronUp, ExternalLink, RotateCcw } from 'lucide-react';
+import { Building2, Users, Check, Loader2, AlertCircle, Cloud, ChevronDown, ChevronUp, ExternalLink, RotateCcw, Upload } from 'lucide-react';
 import { CompanyResearchProgress, ResearchContact } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ interface ResearchCompanyCardProps {
   onToggleExpand: () => void;
   getStepStatus: (stepId: string, companyStep: string) => string;
   onRetryStep?: (companyId: string, step: 'company' | 'people') => void;
+  onPushToContacts?: (companyId: string, companyName: string) => void;
 }
 
 const researchSteps = [
@@ -66,12 +67,13 @@ function PeopleDataSkeleton() {
 }
 
 
-export function ResearchCompanyCard({ 
-  companyProgress, 
-  isExpanded, 
+export function ResearchCompanyCard({
+  companyProgress,
+  isExpanded,
   onToggleExpand,
   getStepStatus,
-  onRetryStep
+  onRetryStep,
+  onPushToContacts
 }: ResearchCompanyCardProps) {
   const { companyId, companyName, step, companyData, peopleData, error } = companyProgress;
 
@@ -189,29 +191,41 @@ export function ResearchCompanyCard({
       {/* Expanded Content - show during loading or when data exists */}
       {isExpanded && (companyData || peopleData || isProcessing) && (
         <div className="px-4 pb-4 space-y-4 border-t border-border/50 pt-4">
-          {/* Retry Buttons */}
-          {onRetryStep && !isProcessing && (
-            <div className="flex flex-wrap gap-2">
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-2">
+            {onRetryStep && !isProcessing && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'company'); }}
+                  className="text-xs"
+                >
+                  <RotateCcw className="w-3 h-3 mr-1" />
+                  Retry Company
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'people'); }}
+                  className="text-xs"
+                >
+                  <RotateCcw className="w-3 h-3 mr-1" />
+                  Retry People
+                </Button>
+              </>
+            )}
+            {onPushToContacts && (step === 'complete' || (peopleData?.contacts && peopleData.contacts.length > 0)) && (
               <Button
-                variant="outline"
                 size="sm"
-                onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'company'); }}
+                onClick={(e) => { e.stopPropagation(); onPushToContacts(companyId, companyName); }}
                 className="text-xs"
               >
-                <RotateCcw className="w-3 h-3 mr-1" />
-                Retry Company
+                <Upload className="w-3 h-3 mr-1" />
+                Push to Contacts
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'people'); }}
-                className="text-xs"
-              >
-                <RotateCcw className="w-3 h-3 mr-1" />
-                Retry People
-              </Button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Company Data or Loading Skeleton */}
           {isLoadingCompany && <CompanyDataSkeleton />}
