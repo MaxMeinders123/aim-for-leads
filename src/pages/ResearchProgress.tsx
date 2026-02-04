@@ -499,11 +499,40 @@ export default function ResearchProgress() {
             });
 
             if (matchingCompany) {
-              console.log(`[Realtime] Prospect received for ${matchingCompany.name}, marking as complete`);
-              updateCompanyProgress(matchingCompany.id, {
-                step: 'complete',
-              });
-              toast.success(`Prospect research complete for ${matchingCompany.name}`);
+              console.log(`[Realtime] Prospect received for ${matchingCompany.name}, fetching all prospects...`);
+
+              // Fetch all prospects for this company research
+              const { data: prospects } = await supabase
+                .from('prospect_research')
+                .select('*')
+                .eq('company_research_id', newRecord.company_research_id)
+                .order('created_at', { ascending: false });
+
+              if (prospects && prospects.length > 0) {
+                console.log(`[Realtime] Found ${prospects.length} prospects for ${matchingCompany.name}`);
+
+                // Convert database prospects to ResearchContact format
+                const contacts = prospects.map(p => ({
+                  first_name: p.first_name || '',
+                  last_name: p.last_name || '',
+                  job_title: p.job_title || '',
+                  title: p.job_title || '',
+                  pitch_type: p.pitch_type || '',
+                  linkedin: p.linkedin_url || '',
+                  priority: (p.priority || 'Medium') as 'High' | 'Medium' | 'Low',
+                  priority_reason: p.priority_reason || '',
+                }));
+
+                updateCompanyProgress(matchingCompany.id, {
+                  step: 'complete',
+                  peopleData: {
+                    status: 'completed',
+                    company: matchingCompany.name,
+                    contacts,
+                  },
+                });
+                toast.success(`Prospect research complete for ${matchingCompany.name}`);
+              }
             }
           }
         }
