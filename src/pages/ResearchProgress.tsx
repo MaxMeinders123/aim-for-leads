@@ -5,14 +5,15 @@ import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { useAppStore, Campaign, Company, CompanyResearchResult, PeopleResearchResult } from '@/stores/appStore';
+import { useAppStore, Campaign, Company, CompanyResearchResult, PeopleResearchResult, Contact } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ResearchCompanyCard } from '@/components/research/ResearchCompanyCard';
 import { supabase } from '@/integrations/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { Contact } from '@/stores/appStore';
+
+const RESEARCH_STATE_KEY_PREFIX = 'research_progress_';
 
 // Call webhook via edge function proxy to avoid CORS
 // Uses AbortController with extended timeout for long-running AI research
