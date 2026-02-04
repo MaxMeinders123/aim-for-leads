@@ -126,26 +126,8 @@
         "method": "POST",
         "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "user_id",
-              "value": "={{ $json.body.user_id }}"
-            },
-            {
-              "name": "company_domain",
-              "value": "={{ $json.body.company_domain }}"
-            },
-            {
-              "name": "company",
-              "value": "={{ $json.output[0].content[0].text }}"
-            },
-            {
-              "name": "status",
-              "value": "completed"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company: $json['output'][0].content[0].text,\n  status: 'completed',\n  original_payload: $json.original_payload\n}) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -178,6 +160,12 @@
               "name": "output[0].content[0].text",
               "value": "={{ $json.output[0].content[0].text }}",
               "type": "string"
+            },
+            {
+              "id": "original-payload-id",
+              "name": "original_payload",
+              "value": "={{ $('Company Research Webhook').item.json.body }}",
+              "type": "object"
             }
           ]
         },
@@ -194,38 +182,10 @@
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "68c6d657-9cb2-45d9-ad13-34af76a8b104",
-              "name": "body.user_id",
-              "value": "={{ $('Prospect Research Webhook').item.json.body.user_id }}",
-              "type": "string"
-            },
-            {
-              "id": "f46205fa-aaaf-433c-bb68-4ef4b72a0632",
-              "name": "body.company_domain",
-              "value": "={{ $('Prospect Research Webhook').item.json.body.company_domain }}",
-              "type": "string"
-            },
-            {
-              "id": "8a9b1c2d-3e4f-5g6h-7i8j-9k0l1m2n3o4p",
-              "name": "body.company_research_id",
-              "value": "={{ $('Prospect Research Webhook').item.json.body.company_research_id }}",
-              "type": "string"
-            },
-            {
-              "id": "2945c78e-a51a-4aa4-b0e0-da5ad7706d8d",
-              "name": "output[0].content[0].text",
-              "value": "={{ $json.output[0].content[0].text }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "// Get webhook data (edge function sends fields at top level in body)\nconst webhookData = $('Prospect Research Webhook').item.json.body;\n\n// Get parsed AI response from previous node\nconst parsedContacts = $input.item.json;\n\n// Combine them\nreturn {\n  body: {\n    user_id: webhookData.user_id,\n    company_domain: webhookData.company_domain,\n    company_research_id: webhookData.company_research_id\n  },\n  parsed_contacts: JSON.stringify(parsedContacts)\n};\n"
       },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         432,
         -400
@@ -238,30 +198,8 @@
         "method": "POST",
         "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "user_id",
-              "value": "={{ $json.body.user_id }}"
-            },
-            {
-              "name": "company_domain",
-              "value": "={{ $json.body.company_domain }}"
-            },
-            {
-              "name": "company_research_id",
-              "value": "={{ $json.body.company_research_id }}"
-            },
-            {
-              "name": "prospect",
-              "value": "={{ $json.output[0].content[0].text }}"
-            },
-            {
-              "name": "status",
-              "value": "completed"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company_research_id: $json.body.company_research_id,\n  prospect: $json.parsed_contacts,\n  status: 'completed'\n}) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",

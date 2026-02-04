@@ -108,12 +108,44 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingLegacy.id);
-      
+
       console.log("[receive-company-results] Updated legacy record:", existingLegacy.id);
     }
 
+    // Auto-trigger prospect research if company is operating and we have the payload
+    if (companyStatus === "Operating" && body.original_payload) {
+      console.log("[receive-company-results] Auto-triggering prospect research...");
+
+      // Get webhook URL from user_integrations
+      const { data: integrations } = await supabase
+        .from("user_integrations")
+        .select("people_research_webhook_url")
+        .eq("user_id", user_id)
+        .single();
+
+      if (integrations?.people_research_webhook_url) {
+        // Build prospect payload with company_research_id
+        const prospectPayload = {
+          ...body.original_payload,
+          company_research_id: insertedRecord.id,
+          company_data: company_data,
+        };
+
+        // Trigger prospect webhook asynchronously (don't wait for response)
+        fetch(integrations.people_research_webhook_url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(prospectPayload),
+        }).catch((err) => {
+          console.error("[receive-company-results] Failed to trigger prospect webhook:", err);
+        });
+
+        console.log("[receive-company-results] Prospect research webhook triggered");
+      }
+    }
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         received: true,
         id: insertedRecord.id,
         company_research_id: insertedRecord.id,

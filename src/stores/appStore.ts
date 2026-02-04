@@ -106,6 +106,7 @@ export interface CompanyResearchProgress {
   companyData?: CompanyResearchResult;
   peopleData?: PeopleResearchResult;
   error?: string;
+  company_research_id?: string; // UUID from Supabase company_research table
 }
 
 export interface ResearchProgress {
