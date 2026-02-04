@@ -325,6 +325,7 @@ export default function ResearchProgress() {
         // Check if n8n is using async mode (responds immediately with "processing")
         if (companyData?.status === 'processing') {
           console.log(`[Research] Company research started in async mode for ${company.name}`);
+          toast.info(`Research started for ${company.name}. Results will appear shortly via realtime updates.`);
           updateCompanyProgress(company.id, {
             step: 'company',
             error: undefined,

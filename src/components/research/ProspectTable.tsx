@@ -29,6 +29,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [isBulkSending, setIsBulkSending] = useState(false);
+  const [showUnsentOnly, setShowUnsentOnly] = useState(false);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -107,6 +108,22 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
   const allUnsent = prospects.filter(p => !p.sent_to_clay);
   const allSelected = allUnsent.length > 0 && allUnsent.every(p => selectedIds.has(p.id));
 
+  // Filter prospects based on showUnsentOnly toggle
+  const filteredProspects = showUnsentOnly
+    ? prospects.filter(p => !p.sent_to_clay)
+    : prospects;
+
+  const formatTimestamp = (timestamp: string | null) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -115,33 +132,55 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
             <Users className="h-5 w-5" />
             Prospects
             <Badge variant="secondary">{prospects.length} contacts</Badge>
+            {unsentCount > 0 && (
+              <Badge variant="outline">{unsentCount} unsent</Badge>
+            )}
           </CardTitle>
-          {selectedIds.size > 0 && (
-            <Button 
-              onClick={handleSendSelected} 
-              disabled={isBulkSending}
-              size="sm"
-            >
-              {isBulkSending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Send className="mr-2 h-4 w-4" />
-                  Send {selectedIds.size} to Clay
-                </>
-              )}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button
+                onClick={handleSendSelected}
+                disabled={isBulkSending}
+                size="sm"
+              >
+                {isBulkSending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Send {selectedIds.size} to Clay
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
+        {/* Filter Toggle */}
+        <div className="flex items-center gap-2 mb-4 pb-3 border-b">
+          <Checkbox
+            checked={showUnsentOnly}
+            onCheckedChange={(checked) => setShowUnsentOnly(checked as boolean)}
+            id="show-unsent-only"
+          />
+          <label htmlFor="show-unsent-only" className="text-sm text-muted-foreground cursor-pointer">
+            Show unsent only
+          </label>
+          {unsentCount > 0 && !showUnsentOnly && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              (All {prospects.length} shown)
+            </span>
+          )}
+        </div>
+
         {/* Select All */}
-        {unsentCount > 0 && (
+        {unsentCount > 0 && !showUnsentOnly && (
           <div className="flex items-center gap-2 mb-4 pb-3 border-b">
-            <Checkbox 
+            <Checkbox
               checked={allSelected}
               onCheckedChange={handleSelectAll}
               id="select-all"
@@ -154,7 +193,12 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
 
         {/* Prospects List */}
         <div className="space-y-3">
-          {prospects.map((prospect) => {
+          {filteredProspects.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">
+              {showUnsentOnly ? 'All prospects have been sent to Clay' : 'No prospects found'}
+            </p>
+          )}
+          {filteredProspects.map((prospect) => {
             const isSending = sendingIds.has(prospect.id);
             const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Unknown';
             
@@ -200,10 +244,17 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                         </Badge>
                       )}
                     </div>
-                    
+
                     {/* Job Title */}
                     {prospect.job_title && (
                       <p className="text-sm text-muted-foreground mb-2">{prospect.job_title}</p>
+                    )}
+
+                    {/* Sent Timestamp */}
+                    {prospect.sent_to_clay && prospect.sent_to_clay_at && (
+                      <p className="text-xs text-muted-foreground">
+                        Sent: {formatTimestamp(prospect.sent_to_clay_at)}
+                      </p>
                     )}
                     
                     {/* Priority Reason */}
