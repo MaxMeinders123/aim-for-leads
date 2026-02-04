@@ -83,38 +83,10 @@
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {\"status\": \"processing\", \"message\": \"Company research started\", \"user_id\": $json.body.user_id, \"company_domain\": $json.body.company_domain} }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        -384,
-        -832
-      ],
-      "id": "87f752cf-4fdf-4dae-96b1-5e11a728bad0",
-      "name": "Respond Immediately (Company)"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {\"status\": \"processing\", \"message\": \"Prospect research started\", \"user_id\": $json.body.user_id, \"company_domain\": $json.body.company_domain} }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        -384,
-        -192
-      ],
-      "id": "ee8584df-6653-46d7-8706-9c57309d7cda",
-      "name": "Respond Immediately (Prospect)"
-    },
-    {
-      "parameters": {
         "httpMethod": "POST",
         "path": "f545849d-1d19-43e7-9dfb-11e34166907f",
+        "responseMode": "onReceived",
+        "responseData": "={\"status\": \"processing\", \"message\": \"Company research started\", \"user_id\": \"{{ $json.body.user_id }}\", \"company_domain\": \"{{ $json.body.company_domain }}\"}",
         "options": {
           "allowedOrigins": "https://831bbab1-8a1e-4a9d-aba1-a53e36205749.lovableproject.com"
         }
@@ -133,6 +105,8 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "responseMode": "onReceived",
+        "responseData": "={\"status\": \"processing\", \"message\": \"Prospect research started\", \"user_id\": \"{{ $json.body.user_id }}\", \"company_domain\": \"{{ $json.body.company_domain }}\"}",
         "options": {
           "allowedOrigins": "https://831bbab1-8a1e-4a9d-aba1-a53e36205749.lovableproject.com"
         }
@@ -319,11 +293,6 @@
       "main": [
         [
           {
-            "node": "Respond Immediately (Company)",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Company Check",
             "type": "main",
             "index": 0
@@ -334,11 +303,6 @@
     "Prospect Research Webhook": {
       "main": [
         [
-          {
-            "node": "Respond Immediately (Prospect)",
-            "type": "main",
-            "index": 0
-          },
           {
             "node": "Contact Search",
             "type": "main",
