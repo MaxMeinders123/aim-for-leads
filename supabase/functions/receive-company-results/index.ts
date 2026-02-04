@@ -43,9 +43,25 @@ serve(async (req) => {
     const company_data = parseTextToJson(rawText);
     console.log("[receive-company-results] Parsed company_data:", company_data);
 
-    if (!user_id || !company_domain) {
+    // Validate required fields
+    if (!user_id || typeof user_id !== 'string') {
       return new Response(
-        JSON.stringify({ error: "user_id and company_domain are required" }),
+        JSON.stringify({ error: "user_id is required and must be a string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!company_domain || typeof company_domain !== 'string') {
+      return new Response(
+        JSON.stringify({ error: "company_domain is required and must be a string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate that company data was provided (even if parsing failed, we should have raw text)
+    if (!rawText) {
+      return new Response(
+        JSON.stringify({ error: "company data is required (expected 'company' field)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

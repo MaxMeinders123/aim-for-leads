@@ -87,9 +87,7 @@
         "path": "f545849d-1d19-43e7-9dfb-11e34166907f",
         "responseMode": "onReceived",
         "responseData": "={\"status\": \"processing\", \"message\": \"Company research started\", \"user_id\": \"{{ $json.body.user_id }}\", \"company_domain\": \"{{ $json.body.company_domain }}\"}",
-        "options": {
-          "allowedOrigins": "https://831bbab1-8a1e-4a9d-aba1-a53e36205749.lovableproject.com"
-        }
+        "options": {}
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -107,9 +105,7 @@
         "path": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
         "responseMode": "onReceived",
         "responseData": "={\"status\": \"processing\", \"message\": \"Prospect research started\", \"user_id\": \"{{ $json.body.user_id }}\", \"company_domain\": \"{{ $json.body.company_domain }}\"}",
-        "options": {
-          "allowedOrigins": "https://831bbab1-8a1e-4a9d-aba1-a53e36205749.lovableproject.com"
-        }
+        "options": {}
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -124,7 +120,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results",
+        "url": "={{ $env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co' }}/functions/v1/receive-company-results",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company: $json['output'][0].content[0].text,\n  status: 'completed',\n  original_payload: $json.original_payload\n}) }}",
@@ -196,7 +192,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
+        "url": "={{ $env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co' }}/functions/v1/receive-prospect-results",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company_research_id: $json.body.company_research_id,\n  prospect: $json.parsed_contacts,\n  status: 'completed'\n}) }}",

@@ -60,47 +60,33 @@ serve(async (req) => {
         .single();
 
       if (updateError) {
-        console.error("[clay-webhook] Update error:", updateError);
-        
-        // Try finding by id as fallback
-        if (updateError.code === 'PGRST116') {
-          console.log("[clay-webhook] Trying fallback: searching by id instead of personal_id");
-          const { data: fallbackProspect, error: fallbackError } = await supabase
-            .from("prospect_research")
-            .update({
-              email: email || null,
-              phone: phone || null,
-              mobile: mobile || null,
-              status: newStatus,
-              salesforce_url: salesforce_url || null,
-              sent_to_clay: true,
-              sent_to_clay_at: new Date().toISOString(),
-              clay_response: body,
-            })
-            .eq("id", personal_id)
-            .select()
-            .single();
+        console.error("[clay-webhook] Failed to update prospect by personal_id:", updateError);
 
-          if (fallbackError) {
-            return new Response(
-              JSON.stringify({ error: `Prospect not found: ${personal_id}` }),
-              { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
+        // If no prospect found with this personal_id, it might be a data issue
+        if (updateError.code === 'PGRST116') {
+          console.error(`[clay-webhook] No prospect found with personal_id: ${personal_id}`);
+          console.error("[clay-webhook] This usually means:");
+          console.error("  1. Prospect was sent to Clay before personal_id was generated");
+          console.error("  2. Clay sent wrong personal_id");
+          console.error("  3. Prospect was deleted from database");
 
           return new Response(
-            JSON.stringify({ 
-              success: true, 
-              prospect_id: fallbackProspect.id,
-              status: newStatus,
-              message: "Prospect updated via fallback (id match)"
+            JSON.stringify({
+              error: `No prospect found with personal_id: ${personal_id}`,
+              details: "Prospect may have been sent to Clay without personal_id or may have been deleted",
+              personal_id: personal_id
             }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
+        // Other database errors
         return new Response(
-          JSON.stringify({ error: updateError.message }),
+          JSON.stringify({
+            error: "Database error while updating prospect",
+            details: updateError.message,
+            code: updateError.code
+          }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
