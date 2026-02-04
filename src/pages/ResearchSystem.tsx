@@ -14,7 +14,7 @@ interface ResearchResult {
   id: string;
   user_id: string;
   company_domain: string;
-  status: 'processing' | 'completed' | 'rejected';
+  status: 'processing' | 'company_complete' | 'prospects_pending' | 'completed' | 'rejected';
   company_data: any;
   prospect_data: any;
   clay_triggered: boolean;
@@ -315,13 +315,16 @@ const ResearchSystem = () => {
               </CardContent>
             </Card>
 
-            {/* Company Data Card */}
-            {currentResult.status === 'completed' && currentResult.company_data && (
+            {/* Company Data Card - show as soon as company_data exists */}
+            {currentResult.company_data && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Building2 className="h-5 w-5" />
                     Company Information
+                    {currentResult.status === 'company_complete' && (
+                      <Badge variant="outline" className="ml-2">Just received</Badge>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -332,13 +335,16 @@ const ResearchSystem = () => {
               </Card>
             )}
 
-            {/* Prospects Card */}
-            {currentResult.status === 'completed' && currentResult.prospect_data && (
+            {/* Prospects Card - show as soon as prospect_data exists */}
+            {currentResult.prospect_data && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Users className="h-5 w-5" />
                     Prospects
+                    {currentResult.status === 'completed' && (
+                      <Badge variant="default" className="ml-2">Complete</Badge>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -402,18 +408,19 @@ const ResearchSystem = () => {
               </pre>
             </div>
             
-            {/* Step 2: n8n to Company Results */}
+            {/* Step 2: n8n to Unified Results Endpoint */}
             <div className="p-4 border rounded-lg bg-muted/30">
-              <p className="font-semibold text-base mb-2">Step 2: n8n → receive-company-results</p>
+              <p className="font-semibold text-base mb-2">Step 2: n8n → receive-research-results (Company)</p>
               <p className="text-muted-foreground mb-2">After company research, POST results here:</p>
               <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
-                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results
+                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-research-results
               </code>
               <p className="mt-2 text-muted-foreground">Payload:</p>
               <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
 {`{
   "user_id": "{{$json.body.user_id}}",
   "company_domain": "{{$json.body.company_domain}}",
+  "type": "company",
   "status": "completed",
   "text": "{{$json.llm_output}}"
 }`}
@@ -428,14 +435,14 @@ const ResearchSystem = () => {
 
             {/* Step 3: n8n People Research to Prospect Results */}
             <div className="p-4 border rounded-lg bg-muted/30">
-              <p className="font-semibold text-base mb-2">Step 3: n8n → receive-prospect-results</p>
+              <p className="font-semibold text-base mb-2">Step 3: n8n → receive-research-results (Prospects)</p>
               <p className="text-muted-foreground mb-2">People Research webhook URL (configured in Settings):</p>
               <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
                 {integrations.people_research_webhook_url || 'Not configured - set in Settings'}
               </code>
-              <p className="mt-2 text-muted-foreground">After people research, POST results here:</p>
+              <p className="mt-2 text-muted-foreground">After people research, POST results to same endpoint:</p>
               <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
-                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results
+                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-research-results
               </code>
               <p className="mt-2 text-muted-foreground">Payload:</p>
               <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
@@ -443,6 +450,7 @@ const ResearchSystem = () => {
   "user_id": "{{$json.body.user_id}}",
   "company_domain": "{{$json.body.company_domain}}",
   "research_result_id": "{{$json.body.research_result_id}}",
+  "type": "prospect",
   "status": "completed",
   "text": "{{$json.llm_output}}"
 }`}
