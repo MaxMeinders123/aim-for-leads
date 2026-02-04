@@ -1,114 +1,120 @@
 
-# Restructure n8n Webhook Payload
+# Accept Raw LLM Text in Edge Functions
 
 ## Overview
-Transform the payload sent to the n8n webhook when starting research to match your specified format. This involves reorganizing campaign data into a flatter, more structured format with arrays for multi-value fields.
+Update both `receive-company-results` and `receive-prospect-results` edge functions to accept a `text` field containing raw LLM output (potentially wrapped in markdown code fences), parse it server-side, and store the structured JSON in the database.
 
-## Current Payload Structure
-The current payload sends the raw campaign object:
+## Why This Approach
+- **Simpler n8n configuration**: Just send strings, no need to fight with JSON validation in n8n
+- **Consistent parsing**: Edge Functions handle all markdown stripping and JSON parsing
+- **Error handling**: Better control over parsing errors at the server level
+
+## Current vs New Payload Structure
+
+### receive-company-results
+
+**Current payload (expects pre-parsed JSON):**
 ```json
 {
-  "event": "research_start",
-  "campaign_id": "...",
-  "campaign": { /* full campaign object */ },
-  "companies": [{ "id": "...", "name": "...", ... }]
+  "user_id": "abc123",
+  "company_domain": "example.com",
+  "company_data": { "name": "...", "industry": "..." },
+  "status": "completed",
+  "error_message": null
 }
 ```
 
-## New Payload Structure
-Transform to your requested format:
+**New payload (accepts raw text):**
 ```json
 {
-  "campaignName": "Cloudar",
-  "painPoints": ["Pain point 1", "Pain point 2", ...],
-  "primaryAngle": "Cost optimization, Security assessment ai",
-  "product": "Cloud consultancy",
-  "productCategory": "Cloud Services",
-  "secondaryAngle": "managed services, training",
-  "targetPersonas": ["Decision maker or key influencer"],
-  "targetRegion": "Benelux",
-  "targetTitles": ["CIO / IT Director / Head of IT", ...],
-  "targetVerticals": [],
-  "techFocus": "AI, Security, FinOps, Devops",
-  "qualify": true,
-  "region": "Benelux",
-  "primaryPitchTypes": ["Security", "AI", "FinOps", "Modernization"],
-  "company": {
-    "name": "klm",
-    "website": "",
-    "linkedin": ""
+  "user_id": "abc123",
+  "company_domain": "example.com",
+  "text": "```json\n{\"name\": \"Example Corp\", \"industry\": \"Tech\"}\n```",
+  "status": "completed",
+  "error_message": null
+}
+```
+
+### receive-prospect-results
+
+**Current payload:**
+```json
+{
+  "user_id": "abc123",
+  "company_domain": "example.com",
+  "prospect_data": [{ "name": "...", "title": "..." }],
+  "research_result_id": "uuid",
+  "status": "completed"
+}
+```
+
+**New payload:**
+```json
+{
+  "user_id": "abc123",
+  "company_domain": "example.com",
+  "text": "```json\n[{\"name\": \"John Doe\", \"title\": \"CTO\"}]\n```",
+  "research_result_id": "uuid",
+  "status": "completed"
+}
+```
+
+## Implementation Details
+
+### Parsing Helper Function
+Both edge functions will use the same parsing logic:
+
+```text
++------------------+     +----------------------+     +------------------+
+| Raw LLM text     | --> | Strip ```json fences | --> | Parse to JSON    |
+| from n8n         |     | and trim whitespace  |     | (object or array)|
++------------------+     +----------------------+     +------------------+
+```
+
+```typescript
+function parseTextToJson(text?: string): any {
+  if (!text) return null;
+  
+  const cleaned = text
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/g, '')
+    .trim();
+  
+  if (!cleaned) return null;
+  
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("Failed to parse text as JSON:", e);
+    return null;
   }
 }
 ```
 
-## Implementation
+### Changes to receive-company-results
 
-### File to Modify
-**`src/pages/CompanyPreview.tsx`** - Update the `handleStartResearch` function
+1. Update destructuring to extract `text` instead of `company_data`
+2. Add parsing logic to convert `text` to `company_data`
+3. Use parsed `company_data` in database operations
+4. Continue passing parsed `company_data` to the people research webhook
 
-### Changes
-1. Create a helper function to parse multi-line/comma-separated text into arrays
-2. Build the new payload structure with proper field mappings:
-   - `campaignName` from `campaign.name`
-   - `painPoints` - split pain_points string by newlines into array
-   - `primaryAngle` from `campaign.primary_angle`
-   - `product` from `campaign.product`
-   - `productCategory` from `campaign.product_category`
-   - `secondaryAngle` from `campaign.secondary_angle`
-   - `targetPersonas` - split personas into array
-   - `targetRegion` from `campaign.target_region`
-   - `targetTitles` - split job_titles into array
-   - `targetVerticals` - split target_verticals into array (empty if none)
-   - `techFocus` from `campaign.technical_focus`
-   - `qualify: true` (static value)
-   - `region` from `campaign.target_region` (duplicate for compatibility)
-   - `primaryPitchTypes` - derive from primary/secondary angles
-   - `company` - send one company at a time with name, website, linkedin fields
+### Changes to receive-prospect-results
 
-3. Since you want one company per request, loop through selected companies and send individual requests (or send as array - will clarify)
+1. Update destructuring to extract `text` instead of `prospect_data`
+2. Add parsing logic to convert `text` to `prospect_data`
+3. Use parsed `prospect_data` in database operations
+4. Continue passing parsed `prospect_data` to Clay webhook
 
----
+## Files to Modify
 
-## Technical Details
-
-### String-to-Array Parsing Logic
-```typescript
-const parseToArray = (text?: string): string[] => {
-  if (!text) return [];
-  return text
-    .split(/[\n,]/)
-    .map(item => item.trim())
-    .filter(item => item.length > 0);
-};
-```
-
-### Payload Transformation
-```typescript
-const payload = {
-  campaignName: selectedCampaign?.name || '',
-  painPoints: parseToArray(selectedCampaign?.pain_points),
-  primaryAngle: selectedCampaign?.primary_angle || '',
-  product: selectedCampaign?.product || '',
-  productCategory: selectedCampaign?.product_category || '',
-  secondaryAngle: selectedCampaign?.secondary_angle || '',
-  targetPersonas: parseToArray(selectedCampaign?.personas),
-  targetRegion: selectedCampaign?.target_region || '',
-  targetTitles: parseToArray(selectedCampaign?.job_titles),
-  targetVerticals: parseToArray(selectedCampaign?.target_verticals),
-  techFocus: selectedCampaign?.technical_focus || '',
-  qualify: true,
-  region: selectedCampaign?.target_region || '',
-  primaryPitchTypes: derivePitchTypes(selectedCampaign),
-  company: {
-    name: company.name,
-    website: company.website || '',
-    linkedin: company.linkedin_url || ''
-  }
-};
-```
-
-### Pitch Types Derivation
-Extract keywords from primary/secondary angles for primaryPitchTypes array.
+| File | Changes |
+|------|---------|
+| `supabase/functions/receive-company-results/index.ts` | Add text parsing, use parsed company_data |
+| `supabase/functions/receive-prospect-results/index.ts` | Add text parsing, use parsed prospect_data |
 
 ## Summary
-This change restructures the webhook payload to be cleaner and more explicit for n8n processing, with arrays for multi-value fields and a flattened structure that's easier to work with in automation workflows.
+- Both endpoints will accept `text` (raw string) instead of pre-parsed JSON
+- Parsing happens server-side with markdown fence stripping
+- n8n can simply pass the LLM response as-is without JSON validation
+- Failed parsing results in `null` data (graceful degradation)
