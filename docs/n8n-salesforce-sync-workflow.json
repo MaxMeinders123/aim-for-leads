@@ -11,9 +11,9 @@
       "id": "webhook-receive-prospect",
       "name": "Webhook: Receive Prospect Data",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
+      "typeVersion": 2.1,
       "position": [250, 100],
-      "webhookId": "{{ env.WEBHOOK_ID }}",
+      "webhookId": "a1b2c3d4-e5f6-4789-a1b2-c3d4e5f67890",
       "description": "Receives enriched prospect data from Lovable application"
     },
     {
@@ -141,50 +141,46 @@
     },
     {
       "parameters": {
-        "url": "{{ env.SUPABASE_URL }}/rest/v1/prospects",
         "method": "PATCH",
-        "headers": {
-          "Authorization": "Bearer {{ env.SUPABASE_KEY }}",
-          "Content-Type": "application/json"
-        },
-        "body": {
-          "salesforce_contact_id": "{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}",
-          "salesforce_contact_url": "https://{{ env.SF_INSTANCE_URL }}/{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}",
-          "synced_at": "{{ $now.toISOString() }}",
-          "sync_status": "success"
-        }
+        "url": "={{ ($env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co') }}/functions/v1/update-prospect-salesforce",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  prospect_id: $json.prospect_id,\n  salesforce_contact_id: $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id,\n  salesforce_contact_url: 'https://' + ($env.SF_INSTANCE_URL || 'yourinstance.salesforce.com') + '/' + ($node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id),\n  synced_at: new Date().toISOString(),\n  sync_status: 'success'\n}) }}",
+        "options": {}
       },
       "id": "http-update-supabase",
       "name": "HTTP: Update Supabase Prospect",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
+      "typeVersion": 4.3,
       "position": [1700, 100],
       "description": "Update prospect record in Supabase with Salesforce Contact info"
     },
     {
       "parameters": {
-        "respondWith": "firstSuccessfulMatch",
-        "responseBody": "{\n  \"status\": \"success\",\n  \"contact_id\": \"{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}\",\n  \"contact_url\": \"https://{{ env.SF_INSTANCE_URL }}/{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}\",\n  \"campaign_member_id\": \"{{ $node['salesforce-create-campaign-member'].json.id }}\"\n}",
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: 'success',\n  contact_id: $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id,\n  contact_url: 'https://' + ($env.SF_INSTANCE_URL || 'yourinstance.salesforce.com') + '/' + ($node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id),\n  campaign_member_id: $node['salesforce-create-campaign-member'].json.id\n}) }}",
         "options": {}
       },
       "id": "response-success",
       "name": "Respond: Success",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
+      "typeVersion": 1.1,
       "position": [2000, 100],
       "description": "Return success response to Lovable"
     },
     {
       "parameters": {
-        "respondWith": "firstSuccessfulMatch",
-        "responseBody": "{\n  \"status\": \"error\",\n  \"error\": \"{{ $error.message }}\",\n  \"timestamp\": \"{{ $now.toISOString() }}\"\n}",
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: 'error',\n  error: $error.message || 'Unknown error',\n  timestamp: new Date().toISOString()\n}) }}",
         "responseCode": 400,
         "options": {}
       },
       "id": "response-error",
       "name": "Respond: Error",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
+      "typeVersion": 1.1,
       "position": [2000, 250],
       "description": "Return error response to Lovable"
     }
@@ -286,13 +282,15 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
   },
   "versionId": "1",
   "meta": {
-    "instanceId": "{{ env.N8N_INSTANCE_ID }}",
-    "desiredState": "active"
-  }
+    "templateCredsSetupCompleted": true,
+    "instanceId": "salesforce-sync-workflow-v1"
+  },
+  "tags": []
 }
