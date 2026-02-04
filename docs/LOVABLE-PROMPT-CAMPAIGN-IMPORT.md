@@ -522,15 +522,112 @@ company_research + prospect_research tables
     "painPoints": ["Cost", "Complexity", "Scale"]
   },
   "salesforce_account_id": "001Q000001AbCdEFG",
+  "salesforce_campaign_id": "701Q400000S45dlIAB",
   "campaign_company_id": "uuid-from-campaign-companies-table"
 }
 ```
+
+**CRITICAL:** The `salesforce_campaign_id` and `salesforce_account_id` must be included at the top level of the payload. These IDs will be:
+1. Saved to `company_research` table
+2. Passed through to `receive-prospect-results`
+3. Saved to each `prospect_research` record
+4. Sent to Clay with each prospect
+5. Used by Clay to create the Contact and add to the correct Campaign
+
+---
+
+## 9. Critical: ID Flow Through System
+
+To ensure prospects are added to the **correct Salesforce Campaign**, these IDs must flow through every step:
+
+### Salesforce Campaign ID Flow:
+```
+Campaign Import (n8n)
+  ↓ salesforce_campaign_id: "701Q400000S45dlIAB"
+campaign_companies table
+  ↓
+User selects companies → Start Research button
+  ↓ Include salesforce_campaign_id in research request
+n8n Research Workflow (GPT-5.2)
+  ↓ original_payload contains salesforce_campaign_id
+receive-company-results edge function
+  ↓ Saves to company_research.salesforce_campaign_id
+  ↓ Passes to prospect webhook
+receive-prospect-results edge function
+  ↓ Saves to each prospect_research.salesforce_campaign_id
+User clicks "Send to Clay"
+  ↓
+send-prospect-to-clay edge function
+  ↓ Includes salesforce_campaign_id in Clay payload
+Clay enriches prospect
+  ↓ Uses salesforce_campaign_id
+Clay creates Salesforce Contact
+  ↓
+Clay creates CampaignMember
+  ↓ CampaignId = salesforce_campaign_id (701Q400000S45dlIAB)
+  ↓ ContactId = newly created contact
+  ↓ Status = "Added"
+Prospect added to CORRECT campaign!
+```
+
+### Salesforce Account ID Flow:
+```
+Campaign Import (n8n)
+  ↓ salesforce_account_id: "001Q000001AbCdEFG"
+campaign_companies table
+  ↓
+Research request includes salesforce_account_id
+  ↓
+company_research.salesforce_account_id
+  ↓
+prospect_research.salesforce_account_id
+  ↓
+Clay payload includes salesforce_account_id
+  ↓
+Clay creates Contact with AccountId = salesforce_account_id
+```
+
+### Key Implementation Points:
+
+**In Lovable App:**
+```typescript
+// When triggering research for selected companies
+for (const company of selectedCompanies) {
+  await fetch(n8nResearchWebhook, {
+    method: 'POST',
+    body: JSON.stringify({
+      user_id: user.id,
+      company_domain: company.website,
+      // CRITICAL: Include these IDs
+      salesforce_campaign_id: campaignImport.salesforce_campaign_id,
+      salesforce_account_id: company.salesforce_account_id,
+      campaign_company_id: company.id,
+      // ... rest of payload
+    })
+  });
+}
+```
+
+**Database Schema:**
+- `campaign_companies.salesforce_account_id` (TEXT) - Source
+- `company_research.salesforce_campaign_id` (TEXT) - Saved here
+- `company_research.salesforce_account_id` (TEXT) - Saved here
+- `prospect_research.salesforce_campaign_id` (TEXT) - Saved to each prospect
+- `prospect_research.salesforce_account_id` (TEXT) - Saved to each prospect
+
+**Clay Configuration:**
+Clay must be configured to:
+1. Create Salesforce Contact with `AccountId = salesforce_account_id`
+2. Create Salesforce CampaignMember with:
+   - `CampaignId = salesforce_campaign_id`
+   - `ContactId = newly_created_contact_id`
+   - `Status = "Added"`
 
 ---
 
 **This completes the Salesforce Campaign Import feature! The user can now:**
 1. Import companies from Salesforce campaigns
 2. Select which companies to research
-3. Trigger bulk research
-4. Track progress
-5. Send results back to Salesforce via Clay
+3. Trigger bulk research with campaign tracking
+4. Track progress with campaign linkage
+5. Send results back to Salesforce via Clay (to the correct campaign!)
