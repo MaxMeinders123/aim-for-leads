@@ -193,6 +193,48 @@ export type Database = {
         }
         Relationships: []
       }
+      research_results: {
+        Row: {
+          clay_response: Json | null
+          clay_triggered: boolean | null
+          company_data: Json | null
+          company_domain: string
+          created_at: string
+          error_message: string | null
+          id: string
+          prospect_data: Json | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          clay_response?: Json | null
+          clay_triggered?: boolean | null
+          company_data?: Json | null
+          company_domain: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          prospect_data?: Json | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          clay_response?: Json | null
+          clay_triggered?: boolean | null
+          company_data?: Json | null
+          company_domain?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          prospect_data?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_integrations: {
         Row: {
           clay_webhook_url: string | null

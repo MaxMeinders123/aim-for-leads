@@ -13,6 +13,7 @@ import CompanyPreview from "./pages/CompanyPreview";
 import ResearchProgress from "./pages/ResearchProgress";
 import Results from "./pages/Results";
 import Settings from "./pages/Settings";
+import ResearchSystem from "./pages/ResearchSystem";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -169,6 +170,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Settings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/research-system"
+              element={
+                <ProtectedRoute>
+                  <ResearchSystem />
                 </ProtectedRoute>
               }
             />
