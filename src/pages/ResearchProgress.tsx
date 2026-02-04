@@ -312,26 +312,37 @@ export default function ResearchProgress() {
       try {
         console.log(`[Research] Sending company webhook request via proxy...`);
         const companyData = await callWebhookProxy(integrations.company_research_webhook_url!, payload);
-        console.log(`[Research] Company response received`);
-        
+        console.log(`[Research] Company response received:`, companyData);
+
+        // Check if n8n is using async mode (responds immediately with "processing")
+        if (companyData?.status === 'processing') {
+          console.log(`[Research] Company research started in async mode for ${company.name}`);
+          updateCompanyProgress(company.id, {
+            step: 'company',
+            error: undefined,
+          });
+          // Skip to next company - will complete via realtime subscription when Supabase receives data
+          continue;
+        }
+
         parsedCompanyData = companyData ? parseAIResponse(companyData) as CompanyResearchResult : null;
         console.log(`[Research] Company data parsed:`, parsedCompanyData ? 'success' : 'null');
-        
+
         // Update state with company data BEFORE moving to people step
-        updateCompanyProgress(company.id, { 
+        updateCompanyProgress(company.id, {
           step: 'people',
           companyData: parsedCompanyData || undefined,
         });
 
         // Auto-expand current company to show results
         setExpandedCompanies(prev => new Set(prev).add(company.id));
-        
+
         companyResearchSuccess = true;
         console.log(`[Research] Company research complete for ${company.name}, proceeding to people research`);
 
       } catch (error: any) {
         console.error('[Research] Company research error:', error);
-        updateCompanyProgress(company.id, { 
+        updateCompanyProgress(company.id, {
           step: 'error',
           error: error.message,
         });
@@ -425,13 +436,13 @@ export default function ResearchProgress() {
         (payload) => {
           console.log('[Realtime] New contact inserted:', payload.new);
           const newContact = payload.new as { company_id?: string; name?: string };
-          
+
           if (newContact.company_id) {
             // Find the company progress and update it to complete
             const progress = companiesProgress.find(
               (p) => p.companyId === newContact.company_id && p.step === 'awaiting_callback'
             );
-            
+
             if (progress) {
               console.log(`[Realtime] Marking ${progress.companyName} as complete`);
               updateCompanyProgress(newContact.company_id, { step: 'complete' });
@@ -448,6 +459,76 @@ export default function ResearchProgress() {
       supabase.removeChannel(channel);
     };
   }, [selectedCampaign?.id, companiesProgress, updateCompanyProgress]);
+
+  // Subscribe to company_research and prospect_research for async mode
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const companyChannel: RealtimeChannel = supabase
+      .channel('company-research-async')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'company_research',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('[Realtime] Company research completed:', payload.new);
+          const newRecord = payload.new as { company_domain: string; raw_data: any; status: string };
+
+          // Find the matching company by domain
+          const matchingCompany = companies.find(c => {
+            const domain = c.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || c.name.toLowerCase().replace(/\s+/g, '');
+            return domain === newRecord.company_domain;
+          });
+
+          if (matchingCompany && newRecord.status === 'completed') {
+            console.log(`[Realtime] Company research done for ${matchingCompany.name}`);
+            const companyData = newRecord.raw_data;
+
+            updateCompanyProgress(matchingCompany.id, {
+              step: 'people',
+              companyData: companyData || undefined,
+            });
+
+            toast.success(`Company research complete for ${matchingCompany.name}`);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Company research subscription:', status);
+      });
+
+    const prospectChannel: RealtimeChannel = supabase
+      .channel('prospect-research-async')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'prospect_research',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('[Realtime] Prospect research completed:', payload.new);
+          const newRecord = payload.new as { company_research_id: string };
+
+          // We'd need to track company_research_id to company mapping
+          // For now, just log it - the contacts subscription handles completion
+          console.log(`[Realtime] New prospect inserted for company_research_id: ${newRecord.company_research_id}`);
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Prospect research subscription:', status);
+      });
+
+    return () => {
+      supabase.removeChannel(companyChannel);
+      supabase.removeChannel(prospectChannel);
+    };
+  }, [user?.id, companies, updateCompanyProgress]);
 
   const handleStop = () => {
     setResearchProgress({ isRunning: false });

@@ -1,0 +1,419 @@
+{
+  "name": "Research Workflow (Async Mode)",
+  "nodes": [
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=SYSTEM ROLE\n\nYou are a world-class B2B Research Agent. Your goal is to validate the company status for {{ $json.body.company.name }} for the campaign {{ $json.body.campaign.campaignName }}.\n\nCAMPAIGN CONTEXT\n\nProduct:\n\nCategory: {{ $json.body.campaign.product }},{{ $json.body.campaign.primaryAngle }},{{ $json.body.campaign.secondaryAngle }}\n\nFocus Region: {{ $json.body.campaign.targetRegion }}\n\nCore Strategy:\n\nPain Points: {{ $json.body.campaign.painPoints[0] }}, {{ $json.body.campaign.painPoints[1] }}, {{ $json.body.campaign.painPoints[2] }}\n\nCRITICAL VALIDATION RULES\n\nACQUIRED / RENAMED / MERGED:\n\nSet \"company_status\": \"Acquired\" (or Renamed)\n\nInclude \"acquiredBy\": \"Parent Company Name\"\n\nInclude \"effectiveDate\": \"Year\"\n\nBANKRUPT / DEFUNCT:\n\nSet \"company_status\": \"Bankrupt\"\n\nNOT FOUND / UNVERIFIABLE:\n\nSet \"company_status\": \"Not_Found\"\n\nOPERATING:\n\nSet \"company_status\": \"Operating\"\n\nRESEARCH SOURCES PRIORITY\n\nPrimary: LinkedIn company page\n\nSecondary: Company website, leadership/about pages, vendor mentions\n\nTertiary: News, press releases, technical blogs\n\nConflict Resolution: If sources conflict, prioritize LinkedIn > Website > Other.\n\nOUTPUT REQUIREMENTS\n\nReturn ONLY a valid JSON object. No prose. No markdown links. Plain text URLs only. Escape quotes in strings. No trailing commas. Output the JSON code block only.\n\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"company_status\": \"Operating|Acquired|Bankrupt|Not_Found\",\n  \"acquiredBy\": \"Parent Co (if acquired/renamed)\",\n  \"effectiveDate\": \"YYYY\",\n  \"cloud_preference\": { \"provider\": \"AWS|Azure|GCP|Unknown\", \"confidence\": 0-100, \"evidence_urls\": [] }\n}\n\n\nINPUT FORMAT: Company: {{ $json.body.company.name }} website {{ $json.body.company.website }} linkedin {{ $json.body.company.linkedin }}\n\nCOMPANY TO RESEARCH: {{ $json.body.company.name }} (Website: {{ $json.body.company.website }}) (LinkedIn:{{ $json.body.company.linkedin }} )"
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "medium"
+          }
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -112,
+        -608
+      ],
+      "id": "c7caa677-57f9-45a9-8bbb-1331ade0dc16",
+      "name": "Company Check",
+      "credentials": {
+        "openAiApi": {
+          "id": "KSewCTd2Wh09tVkU",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=SYSTEM ROLE\n\nYou are a world-class B2B Research Agent. Your goal is to find the \"Ideal Technical Buyers\" for {{ $json.body.campaign.campaignName }} at {{ $json.body.company.name }}.\n\nCAMPAIGN CONTEXT\n\nProduct:\n\nCategory: {{ $json.body.campaign.product }},{{ $json.body.campaign.primaryAngle }},{{ $json.body.campaign.secondaryAngle }}\n\nFocus Region: {{ $json.body.campaign.targetRegion }}\n\nCore Strategy:\n\nPain Points: {{ $json.body.campaign.painPoints[0] }}, {{ $json.body.campaign.painPoints[1] }}, {{ $json.body.campaign.painPoints[2] }}\n\nQUALIFICATION CRITERIA\n\nEach prospect must have:\n\nCurrent Employment: Must be currently employed at {{ $json.body.company.name }}\n\nDecision Authority: Ownership of network infrastructure, security architecture, application delivery, CDN, DDoS protection, or cloud platforms.\n\nDomain Alignment: Role must align with {{ $json.body.campaign.product }}/ {{ $json.body.campaign.productCategory }}\n\nSeniority: Director-level or above (Manager acceptable ONLY if they are the most senior relevant technical role).\n\nEXCLUDE: IT Support, Helpdesk, Junior Engineers, Trainees, Interns, generic Specialists without decision authority.\n\nRESEARCH METHODOLOGY (STRICT RULES)\n\nContact Count: Find exactly 3 to 7 perfect-fit contacts per company. Never return more than 7. Quality over quantity.\n\nPersona Weighting (80/20 Rule):\n\n80% Technical Owners: Find people who actually work with the tech (NOC, Infrastructure, DevOps, Cloud Architect, IT Ops).\n\n20% Strategic Owners: Find executive decision-makers (CTO, VP Eng) ONLY if they show a technical background.\n\nProhibited Roles: Do not include CEOs, CFOs, or HR unless they are explicitly technical acting-CTOs.\n\nLinkedIn Verification (CRITICAL):\n\nThe assistant must verify and provide actual LinkedIn URLs through direct search.\n\nSearch LinkedIn for \"[Person Name] [Company Name]\" to find their profile.\n\nCopy the actual LinkedIn URL from the search results or profile page.\n\nIf you cannot access LinkedIn directly: Explicitly state \"LinkedIn profile not publicly accessible\" in keys if blocked.\n\nNever guess: Do not construct or extrapolate URLs from name patterns.\n\nNo placeholders: Never return hypothetical URLs.\n\nValid pattern: linkedin.com/in/[profile-slug].\n\nResearch Sources Priority:\n\nPrimary: LinkedIn individual profiles & company pages (People tab).\n\nSecondary: Company website (Leadership/IT pages), Cloudflare/Vendor mentions.\n\nTertiary: News, press releases, technical blogs.\n\nConflict Resolution: If sources conflict, prioritize LinkedIn > Website > Other.\n\nData Hygiene:\n\nTitle Case Only: Format names like \"John Smith\".\n\nClean Titles: Strip \"CEO Etc\" or instruction fluff. Use the real, current job title.\n\nRegional Verify: Ensure the contact has authority for the {{ $json.body.campaign.targetRegion }} market.\n\nOUTPUT REQUIREMENTS\n\nReturn ONLY a valid JSON object. No prose. No markdown links. Plain text URLs only. Include exactly 3 to 7 contacts in the \"contacts\" array. Every contact must have a valid \"linkedin\" URL (e.g. linkedin.com/in/slug). Escape quotes in strings. No trailing commas. Output the JSON code block only.\n\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"contacts\": [\n    {\n      \"first_name\": \"...\",\n      \"last_name\": \"...\",\n      \"job_title\": \"Actual Title\",\n      \"title\": \"Security|AI|FinOps|Modernization\",\n      \"pitch_type\": \"Security|AI|FinOps|Modernization\",\n      \"linkedin\": \"linkedin.com/in/profile-slug\",\n      \"priority\": \"High|Medium|Low\",\n      \"priority_reason\": \"Matched for {{ $json.body.campaign.primaryAngle }} because they manage [Specific Tech Found]\"\n    }\n  ]\n}\n\n\nCOMPANY TO RESEARCH: {{ $json.body.company.name }} (Website: {{ $json.body.company.website }}) (LinkedIn:{{ $json.body.company.linkedin }} )"
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "low"
+          }
+        },
+        "options": {
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "low"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -128,
+        -400
+      ],
+      "id": "95dff59d-5f87-466d-ad45-6cde16913da0",
+      "name": "Contact Search",
+      "credentials": {
+        "openAiApi": {
+          "id": "KSewCTd2Wh09tVkU",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\"status\": \"processing\", \"message\": \"Company research started\", \"user_id\": $json.body.user_id, \"company_domain\": $json.body.company_domain} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -384,
+        -832
+      ],
+      "id": "87f752cf-4fdf-4dae-96b1-5e11a728bad0",
+      "name": "Respond Immediately (Company)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\"status\": \"processing\", \"message\": \"Prospect research started\", \"user_id\": $json.body.user_id, \"company_domain\": $json.body.company_domain} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -384,
+        -192
+      ],
+      "id": "ee8584df-6653-46d7-8706-9c57309d7cda",
+      "name": "Respond Immediately (Prospect)"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "f545849d-1d19-43e7-9dfb-11e34166907f",
+        "options": {
+          "allowedOrigins": "https://831bbab1-8a1e-4a9d-aba1-a53e36205749.lovableproject.com"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -640,
+        -720
+      ],
+      "id": "9984191e-d67f-4583-bd55-c15b16444794",
+      "name": "Company Research Webhook",
+      "webhookId": "f545849d-1d19-43e7-9dfb-11e34166907f"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "options": {
+          "allowedOrigins": "https://831bbab1-8a1e-4a9d-aba1-a53e36205749.lovableproject.com"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -640,
+        -304
+      ],
+      "id": "a793b868-560d-4430-ad6a-e6c72eab2273",
+      "name": "Prospect Research Webhook",
+      "webhookId": "845a71b9-f7fd-4466-9599-3cb79e34d3a4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $json.body.user_id }}"
+            },
+            {
+              "name": "company_domain",
+              "value": "={{ $json.body.company_domain }}"
+            },
+            {
+              "name": "company",
+              "value": "={{ $json.output[0].content[0].text }}"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        448,
+        -608
+      ],
+      "id": "a947a31a-22f3-4b8f-8aa8-83a52d6594de",
+      "name": "Send to Supabase (Company)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f46205fa-aaaf-433c-bb68-4ef4b72a0632",
+              "name": "body.user_id",
+              "value": "={{ $('Company Research Webhook').item.json.body.user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "f5e07b4f-58ed-4c1d-8389-6c773864ed02",
+              "name": "body.company_domain",
+              "value": "={{ $('Company Research Webhook').item.json.body.company_domain }}",
+              "type": "string"
+            },
+            {
+              "id": "2945c78e-a51a-4aa4-b0e0-da5ad7706d8d",
+              "name": "output[0].content[0].text",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        -608
+      ],
+      "id": "746c8887-aff3-462b-a12d-d23aba3839e6",
+      "name": "Format Company Data"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "68c6d657-9cb2-45d9-ad13-34af76a8b104",
+              "name": "body.user_id",
+              "value": "={{ $('Prospect Research Webhook').item.json.body.user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "f46205fa-aaaf-433c-bb68-4ef4b72a0632",
+              "name": "body.company_domain",
+              "value": "={{ $('Prospect Research Webhook').item.json.body.company_domain }}",
+              "type": "string"
+            },
+            {
+              "id": "8a9b1c2d-3e4f-5g6h-7i8j-9k0l1m2n3o4p",
+              "name": "body.company_research_id",
+              "value": "={{ $('Prospect Research Webhook').item.json.body.company_research_id }}",
+              "type": "string"
+            },
+            {
+              "id": "2945c78e-a51a-4aa4-b0e0-da5ad7706d8d",
+              "name": "output[0].content[0].text",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        432,
+        -400
+      ],
+      "id": "36a52499-396c-4547-81c5-1177120c85f6",
+      "name": "Format Prospect Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $json.body.user_id }}"
+            },
+            {
+              "name": "company_domain",
+              "value": "={{ $json.body.company_domain }}"
+            },
+            {
+              "name": "company_research_id",
+              "value": "={{ $json.body.company_research_id }}"
+            },
+            {
+              "name": "prospect",
+              "value": "={{ $json.output[0].content[0].text }}"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        656,
+        -400
+      ],
+      "id": "4a74a108-356e-44ae-9d79-d0819d4a5f01",
+      "name": "Send to Supabase (Prospect)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Helper: safely get nested fields\nfunction get(obj, path) {\n  return path.reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), obj);\n}\n\n// Common locations where OpenAI nodes put text\nconst candidates = [\n  ['content', 0, 'text'],\n  ['message', 'content', 0, 'text'],\n  ['output', 0, 'content', 0, 'text'],\n  ['data', 0, 'content', 0, 'text'],\n];\n\n// Find the first non-empty string\nlet rawText;\nfor (const path of candidates) {\n  const v = get($json, path);\n  if (typeof v === 'string' && v.trim()) {\n    rawText = v;\n    break;\n  }\n}\n\nif (!rawText) {\n  const topKeys = Object.keys($json);\n  throw new Error(`Could not find OpenAI text in expected locations. Top-level keys: ${topKeys.join(', ')}`);\n}\n\n// Strip markdown fenced JSON\nconst cleaned = rawText\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/```$/i, '')\n  .trim();\n\n// Parse JSON\nlet parsed;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (err) {\n  throw new Error('Failed to parse OpenAI JSON: ' + err.message + '\\nRaw text (first 200 chars): ' + cleaned.slice(0, 200));\n}\n\n// Return parsed object as n8n JSON\nreturn parsed;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -400
+      ],
+      "id": "adfb21e7-e3ad-470a-8b0f-37b4456b2064",
+      "name": "Parse Prospect JSON"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Company Research Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond Immediately (Company)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Company Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prospect Research Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond Immediately (Prospect)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Contact Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Check": {
+      "main": [
+        [
+          {
+            "node": "Format Company Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Company Data": {
+      "main": [
+        [
+          {
+            "node": "Send to Supabase (Company)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Search": {
+      "main": [
+        [
+          {
+            "node": "Parse Prospect JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Prospect JSON": {
+      "main": [
+        [
+          {
+            "node": "Format Prospect Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Prospect Data": {
+      "main": [
+        [
+          {
+            "node": "Send to Supabase (Prospect)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "timeSavedPerExecution": 10
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e9cede33a723de861755fc4c3b19745bba65cbc53a84a89eef946fc41c7f58e4"
+  },
+  "tags": []
+}
