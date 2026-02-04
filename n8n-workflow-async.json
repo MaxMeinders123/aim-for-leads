@@ -5,9 +5,9 @@
       "parameters": {
         "modelId": {
           "__rl": true,
-          "value": "gpt-4-turbo",
+          "value": "gpt-5.2",
           "mode": "list",
-          "cachedResultName": "GPT-4 Turbo"
+          "cachedResultName": "GPT-5.2"
         },
         "responses": {
           "values": [
@@ -42,9 +42,9 @@
       "parameters": {
         "modelId": {
           "__rl": true,
-          "value": "gpt-4-turbo",
+          "value": "gpt-5.2",
           "mode": "list",
-          "cachedResultName": "GPT-4 Turbo"
+          "cachedResultName": "GPT-5.2"
         },
         "responses": {
           "values": [
