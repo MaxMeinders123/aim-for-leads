@@ -49,7 +49,7 @@ serve(async (req) => {
 
     for (const prospectId of idsToSend) {
       try {
-        // Get prospect data with company info
+        // Get prospect data with company info (using new columns)
         const { data: prospect, error: prospectError } = await supabase
           .from("prospect_research")
           .select(`
@@ -72,23 +72,31 @@ serve(async (req) => {
           continue;
         }
 
-        // Check if already sent
-        if (prospect.sent_to_clay) {
-          results.push({ prospect_id: prospectId, success: false, error: "Already sent to Clay" });
+        // Check if already sent and has been enriched (status != pending)
+        if (prospect.sent_to_clay && prospect.status !== 'pending') {
+          results.push({ prospect_id: prospectId, success: false, error: "Already processed by Clay" });
           continue;
         }
 
-        // Build Clay payload
+        // Generate personal_id if not exists
+        const personalId = prospect.personal_id || crypto.randomUUID();
+
+        // Build Clay payload with all required fields
         const clayPayload = {
+          personal_id: personalId,
           prospect_id: prospectId,
           first_name: prospect.first_name,
           last_name: prospect.last_name,
           full_name: `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim(),
+          title: prospect.job_title,
           job_title: prospect.job_title,
           linkedin_url: prospect.linkedin_url,
           priority: prospect.priority,
           priority_reason: prospect.priority_reason,
           pitch_type: prospect.pitch_type,
+          // Company info from company_research join or direct columns
+          salesforce_account_id: prospect.salesforce_account_id || prospect.company_research?.id,
+          company_id: prospect.company_id || prospect.company_research?.id,
           company: {
             id: prospect.company_research?.id,
             domain: prospect.company_research?.company_domain,
@@ -113,12 +121,14 @@ serve(async (req) => {
         const clayResult = await clayResponse.text();
         console.log("[send-prospect-to-clay] Clay response:", clayResult);
 
-        // Update prospect as sent
+        // Update prospect with sent status and personal_id
         await supabase
           .from("prospect_research")
           .update({
             sent_to_clay: true,
             sent_to_clay_at: new Date().toISOString(),
+            status: 'sent_to_clay',
+            personal_id: personalId,
             clay_response: { status: clayResponse.status, body: clayResult },
           })
           .eq("id", prospectId);

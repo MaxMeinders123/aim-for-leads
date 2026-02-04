@@ -37,6 +37,12 @@ interface ProspectResearch {
   last_name: string | null;
   job_title: string | null;
   linkedin_url: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  status: string | null;
+  salesforce_url: string | null;
+  salesforce_account_id: string | null;
   priority: string | null;
   priority_reason: string | null;
   pitch_type: string | null;

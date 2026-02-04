@@ -18,23 +18,116 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    console.log("Clay webhook received:", JSON.stringify(body, null, 2));
+    console.log("[clay-webhook] Received:", JSON.stringify(body, null, 2));
 
-    const { event, campaign_id, company_id, data } = body;
+    // Clay sends enrichment results with personal_id to identify the prospect
+    const { 
+      personal_id, 
+      email, 
+      phone, 
+      mobile, 
+      is_duplicate, 
+      salesforce_url,
+      salesforce_account_id,
+      company_id,
+      // Legacy fields for backwards compatibility
+      event,
+      campaign_id,
+      data 
+    } = body;
 
-    // Handle different event types from Clay
-    switch (event) {
-      case "enrichment_complete": {
-        // Store enriched company data
-        if (company_id && data) {
-          // You can extend this to store enrichment data in a dedicated table
-          console.log(`Enrichment complete for company ${company_id}:`, data);
-          
+    // New flow: Update prospect by personal_id with enrichment data
+    if (personal_id) {
+      console.log(`[clay-webhook] Updating prospect with personal_id: ${personal_id}`);
+      
+      const newStatus = is_duplicate === true ? 'duplicate' : 'inputted';
+      
+      const { data: updatedProspect, error: updateError } = await supabase
+        .from("prospect_research")
+        .update({
+          email: email || null,
+          phone: phone || null,
+          mobile: mobile || null,
+          status: newStatus,
+          salesforce_url: salesforce_url || null,
+          salesforce_account_id: salesforce_account_id || null,
+          sent_to_clay: true,
+          sent_to_clay_at: new Date().toISOString(),
+          clay_response: body,
+        })
+        .eq("personal_id", personal_id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error("[clay-webhook] Update error:", updateError);
+        
+        // Try finding by id as fallback
+        if (updateError.code === 'PGRST116') {
+          console.log("[clay-webhook] Trying fallback: searching by id instead of personal_id");
+          const { data: fallbackProspect, error: fallbackError } = await supabase
+            .from("prospect_research")
+            .update({
+              email: email || null,
+              phone: phone || null,
+              mobile: mobile || null,
+              status: newStatus,
+              salesforce_url: salesforce_url || null,
+              sent_to_clay: true,
+              sent_to_clay_at: new Date().toISOString(),
+              clay_response: body,
+            })
+            .eq("id", personal_id)
+            .select()
+            .single();
+
+          if (fallbackError) {
+            return new Response(
+              JSON.stringify({ error: `Prospect not found: ${personal_id}` }),
+              { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
           return new Response(
             JSON.stringify({ 
               success: true, 
-              message: "Enrichment data received",
-              company_id 
+              prospect_id: fallbackProspect.id,
+              status: newStatus,
+              message: "Prospect updated via fallback (id match)"
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ error: updateError.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log(`[clay-webhook] Successfully updated prospect: ${updatedProspect?.id}, status: ${newStatus}`);
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          prospect_id: updatedProspect?.id,
+          status: newStatus,
+          is_duplicate: is_duplicate || false
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Legacy flow: Handle different event types from Clay (backwards compatibility)
+    switch (event) {
+      case "enrichment_complete": {
+        if (body.company_id && data) {
+          console.log(`[clay-webhook] Legacy enrichment complete for company ${body.company_id}`);
+          return new Response(
+            JSON.stringify({ 
+              success: true, 
+              message: "Enrichment data received (legacy)",
+              company_id: body.company_id 
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -43,54 +136,39 @@ serve(async (req) => {
       }
 
       case "contacts_enriched": {
-        // Handle enriched contacts from Clay
+        // Update prospect_research instead of contacts table
         if (campaign_id && data?.contacts) {
-          const contactsToUpsert = data.contacts.map((contact: any) => ({
-            campaign_id,
-            company_id: contact.company_id || null,
-            company_name: contact.company_name,
-            name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
-            title: contact.job_title || contact.title || null,
-            email: contact.email || null,
-            phone: contact.phone || null,
-            linkedin_url: contact.linkedin || contact.linkedin_url || null,
-            priority: (contact.priority || "medium").toLowerCase(),
-          }));
+          console.log(`[clay-webhook] Legacy contacts_enriched for campaign ${campaign_id}`);
+          
+          const results: { prospect_id: string; success: boolean }[] = [];
+          
+          for (const contact of data.contacts) {
+            if (contact.personal_id) {
+              const { data: updated, error } = await supabase
+                .from("prospect_research")
+                .update({
+                  email: contact.email || null,
+                  phone: contact.phone || null,
+                  status: contact.is_duplicate ? 'duplicate' : 'inputted',
+                  salesforce_url: contact.salesforce_url || null,
+                  clay_response: contact,
+                })
+                .eq("personal_id", contact.personal_id)
+                .select("id")
+                .single();
 
-          const { data: insertedData, error } = await supabase
-            .from("contacts")
-            .upsert(contactsToUpsert, { onConflict: 'id' })
-            .select();
-
-          if (error) {
-            console.error("Error upserting contacts:", error);
-            return new Response(
-              JSON.stringify({ error: error.message }),
-              { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
+              results.push({ 
+                prospect_id: updated?.id || contact.personal_id, 
+                success: !error 
+              });
+            }
           }
 
           return new Response(
             JSON.stringify({ 
               success: true, 
-              contacts_processed: insertedData?.length || 0 
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        break;
-      }
-
-      case "company_data": {
-        // Handle company research data from Clay
-        if (data) {
-          console.log("Company data received:", data);
-          
-          return new Response(
-            JSON.stringify({ 
-              success: true, 
-              message: "Company data received",
-              data 
+              processed: results.length,
+              results
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -100,13 +178,12 @@ serve(async (req) => {
 
       default: {
         // Generic handler - just log and acknowledge
-        console.log(`Unknown event type: ${event}`, body);
+        console.log(`[clay-webhook] Unknown event or no personal_id:`, body);
         
         return new Response(
           JSON.stringify({ 
             success: true, 
-            message: "Webhook received",
-            event,
+            message: "Webhook received but no action taken (missing personal_id)",
             received_at: new Date().toISOString()
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -115,12 +192,12 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: "Invalid event or missing data" }),
+      JSON.stringify({ error: "Invalid request - no personal_id or valid event provided" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error("Clay webhook error:", errorMessage);
+    console.error("[clay-webhook] Error:", errorMessage);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

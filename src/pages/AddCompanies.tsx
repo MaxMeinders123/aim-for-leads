@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Database, FileText, Search, ArrowRight } from 'lucide-react';
+import { Database, FileText, Search, ArrowRight, Upload, Loader2 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -23,11 +23,14 @@ export default function AddCompanies() {
     setSalesforceResult,
     setCompanies,
     integrations,
+    user,
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState('salesforce');
   const [manualInput, setManualInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [salesforceCampaignId, setSalesforceCampaignId] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   const parseManualInput = (input: string) => {
     const lines = input.split('\n').filter((line) => line.trim());
@@ -96,6 +99,58 @@ export default function AddCompanies() {
     }
   };
 
+  const handleSalesforceCampaignImport = async () => {
+    if (!salesforceCampaignId.trim()) {
+      toast.error('Please enter a Salesforce Campaign ID');
+      return;
+    }
+
+    if (!selectedCampaign?.id) {
+      toast.error('Please select a campaign first');
+      return;
+    }
+
+    if (!user?.id) {
+      toast.error('Please log in to import companies');
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('import-salesforce-campaign', {
+        body: {
+          salesforce_campaign_id: salesforceCampaignId.trim(),
+          campaign_id: selectedCampaign.id,
+          user_id: user.id,
+        },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      toast.success(`✅ Imported ${data.imported_count} companies from Salesforce`);
+      
+      // Update local state with imported companies
+      if (data.companies) {
+        const companies = data.companies.map((c: any) => ({
+          id: c.id,
+          campaign_id: selectedCampaign.id,
+          name: c.name,
+          website: c.website,
+          linkedin_url: c.linkedin_url,
+          selected: true,
+        }));
+        setCompanies(companies);
+        navigate('/company-preview');
+      }
+    } catch (err: any) {
+      console.error('Salesforce import error:', err);
+      toast.error(err.message || 'Failed to import from Salesforce');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const handleLoadCompanies = () => {
     navigate('/company-preview');
   };
@@ -124,10 +179,14 @@ export default function AddCompanies() {
 
         <div className="flex-1 overflow-auto px-6 py-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="max-w-2xl">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger value="salesforce" className="flex items-center gap-2">
                 <Database className="w-4 h-4" />
-                Salesforce ID
+                SF Campaign
+              </TabsTrigger>
+              <TabsTrigger value="salesforce-list" className="flex items-center gap-2">
+                <Search className="w-4 h-4" />
+                SF List ID
               </TabsTrigger>
               <TabsTrigger value="manual" className="flex items-center gap-2">
                 <FileText className="w-4 h-4" />
@@ -135,7 +194,59 @@ export default function AddCompanies() {
               </TabsTrigger>
             </TabsList>
 
+            {/* Salesforce Campaign Import (NEW) */}
             <TabsContent value="salesforce" className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="sfCampaignId">Salesforce Campaign ID</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="sfCampaignId"
+                    value={salesforceCampaignId}
+                    onChange={(e) => setSalesforceCampaignId(e.target.value)}
+                    placeholder="e.g. 701xyz789"
+                    className="h-12 rounded-xl flex-1"
+                  />
+                  <Button
+                    onClick={handleSalesforceCampaignImport}
+                    disabled={isImporting || !salesforceCampaignId.trim()}
+                    className="h-12 px-6 rounded-xl"
+                  >
+                    {isImporting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Importing...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Import
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Find this ID in your Salesforce Campaign URL (e.g., /lightning/r/Campaign/701.../view)
+                </p>
+              </div>
+
+              {!integrations.salesforce_import_webhook_url && (
+                <div className="p-4 rounded-xl border border-border bg-muted/50">
+                  <p className="text-sm text-muted-foreground">
+                    Salesforce Import Webhook URL is not configured. Please set it up in{' '}
+                    <button
+                      onClick={() => navigate('/settings')}
+                      className="underline font-medium text-primary"
+                    >
+                      Settings
+                    </button>
+                    .
+                  </p>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Salesforce List ID (Legacy) */}
+            <TabsContent value="salesforce-list" className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="salesforceId">Salesforce List ID</Label>
                 <div className="flex gap-2">
@@ -172,7 +283,7 @@ export default function AddCompanies() {
                   <p className="text-xs text-muted-foreground font-mono">{salesforceListId}</p>
                   <Button
                     onClick={handleLoadCompanies}
-                    className="w-full h-12 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
+                    className="w-full h-12 rounded-xl"
                   >
                     Load Companies ({salesforceResult.companyCount})
                     <ArrowRight className="w-5 h-5 ml-2" />
@@ -181,12 +292,12 @@ export default function AddCompanies() {
               )}
 
               {!integrations.clay_webhook_url && (
-                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800">
-                  <p className="text-sm">
+                <div className="p-4 rounded-xl border border-border bg-muted/50">
+                  <p className="text-sm text-muted-foreground">
                     Clay Webhook URL is not configured. Please set it up in{' '}
                     <button
                       onClick={() => navigate('/settings')}
-                      className="underline font-medium"
+                      className="underline font-medium text-primary"
                     >
                       Settings
                     </button>
@@ -220,7 +331,7 @@ export default function AddCompanies() {
               <Button
                 onClick={handlePreviewManual}
                 disabled={!manualInput.trim()}
-                className="w-full h-12 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
+                className="w-full h-12 rounded-xl"
               >
                 Preview Companies
                 <ArrowRight className="w-5 h-5 ml-2" />
