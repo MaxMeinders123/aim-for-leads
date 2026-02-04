@@ -19,15 +19,16 @@ serve(async (req) => {
     const body = await req.json();
     console.log("[receive-prospect-results] Payload:", JSON.stringify(body, null, 2));
 
-    const { 
-      user_id, 
-      company_domain, 
-      company_research_id, 
+    const {
+      user_id,
+      company_domain,
+      company_research_id,
       company_id, // New: direct company_id from companies table
       salesforce_account_id,
-      research_result_id, 
-      status, 
-      error_message 
+      salesforce_campaign_id,
+      research_result_id,
+      status,
+      error_message
     } = body;
     const rawText = body.prospect || body.text || body.prospects;
 
@@ -142,6 +143,11 @@ serve(async (req) => {
       // Add salesforce_account_id if available
       if (resolvedSalesforceAccountId) {
         prospectInsert.salesforce_account_id = resolvedSalesforceAccountId;
+      }
+
+      // Add salesforce_campaign_id if available (for Clay to add to correct campaign)
+      if (salesforce_campaign_id) {
+        prospectInsert.salesforce_campaign_id = salesforce_campaign_id;
       }
 
       const { data: insertedProspect, error: insertError } = await supabase

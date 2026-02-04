@@ -104,8 +104,10 @@ serve(async (req) => {
           priority: prospect.priority,
           priority_reason: prospect.priority_reason,
           pitch_type: prospect.pitch_type,
+          // Salesforce IDs - CRITICAL for Clay to add to correct campaign
+          salesforce_account_id: prospect.salesforce_account_id || prospect.company_research?.salesforce_account_id,
+          salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.company_research?.salesforce_campaign_id,
           // Company info from company_research join or direct columns
-          salesforce_account_id: prospect.salesforce_account_id || prospect.company_research?.id,
           company_id: prospect.company_id || prospect.company_research?.id,
           company: {
             id: prospect.company_research?.id,

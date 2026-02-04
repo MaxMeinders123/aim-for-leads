@@ -20,7 +20,15 @@ serve(async (req) => {
     console.log("[receive-company-results] Payload:", JSON.stringify(body, null, 2));
 
     // Extract fields - support multiple formats from n8n
-    const { user_id, company_domain, status, error_message } = body;
+    const {
+      user_id,
+      company_domain,
+      status,
+      error_message,
+      salesforce_campaign_id,
+      salesforce_account_id,
+      campaign_company_id
+    } = body;
     const rawText = body.company || body[" company"] || body.text;
 
     // Parse raw LLM text (may have ```json fences) into structured JSON
@@ -89,6 +97,8 @@ serve(async (req) => {
         evidence_urls: evidenceUrls,
         raw_data: company_data,
         error_message: error_message || null,
+        salesforce_campaign_id: salesforce_campaign_id || null,
+        salesforce_account_id: salesforce_account_id || null,
       })
       .select()
       .single();
@@ -102,6 +112,19 @@ serve(async (req) => {
     }
 
     console.log("[receive-company-results] Inserted company research:", insertedRecord.id);
+
+    // Update campaign_companies table if this came from campaign import
+    if (campaign_company_id) {
+      await supabase
+        .from("campaign_companies")
+        .update({
+          status: 'completed',
+          company_research_id: insertedRecord.id
+        })
+        .eq("id", campaign_company_id);
+
+      console.log("[receive-company-results] Updated campaign_companies:", campaign_company_id);
+    }
 
     // Also update the legacy research_results table for backwards compatibility
     const { data: existingLegacy } = await supabase
