@@ -322,7 +322,13 @@
             "node": "Respond Immediately (Company)",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Respond Immediately (Company)": {
+      "main": [
+        [
           {
             "node": "Company Check",
             "type": "main",
@@ -338,7 +344,13 @@
             "node": "Respond Immediately (Prospect)",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Respond Immediately (Prospect)": {
+      "main": [
+        [
           {
             "node": "Contact Search",
             "type": "main",
