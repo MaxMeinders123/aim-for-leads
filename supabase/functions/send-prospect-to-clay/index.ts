@@ -21,6 +21,14 @@ serve(async (req) => {
 
     const { prospect_id, prospect_ids, user_id } = body;
 
+    // Validate user_id is provided
+    if (!user_id) {
+      return new Response(
+        JSON.stringify({ error: "user_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Support single or multiple prospect IDs
     const idsToSend: string[] = prospect_ids || (prospect_id ? [prospect_id] : []);
 
@@ -31,12 +39,12 @@ serve(async (req) => {
       );
     }
 
-    // Get Clay webhook URL from user_integrations
-    const { data: integrationData } = await supabase
+    // Get Clay webhook URL from user_integrations for THIS user only (security fix)
+    const { data: integrationData, error: integrationError } = await supabase
       .from("user_integrations")
       .select("clay_webhook_url")
-      .limit(1)
-      .maybeSingle();
+      .eq("user_id", user_id)
+      .single();
 
     if (!integrationData?.clay_webhook_url) {
       return new Response(
@@ -50,6 +58,7 @@ serve(async (req) => {
     for (const prospectId of idsToSend) {
       try {
         // Get prospect data with company info (using new columns)
+        // SECURITY: Filter by user_id to prevent accessing other users' prospects
         const { data: prospect, error: prospectError } = await supabase
           .from("prospect_research")
           .select(`
@@ -65,6 +74,7 @@ serve(async (req) => {
             )
           `)
           .eq("id", prospectId)
+          .eq("user_id", user_id)
           .single();
 
         if (prospectError || !prospect) {

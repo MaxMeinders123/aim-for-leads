@@ -53,9 +53,18 @@ serve(async (req) => {
     const prospect_data = parseTextToJson(rawText);
     console.log("[receive-prospect-results] Parsed prospect_data:", prospect_data);
 
-    if (!user_id) {
+    // Validate required fields
+    if (!user_id || typeof user_id !== 'string') {
       return new Response(
-        JSON.stringify({ error: "user_id is required" }),
+        JSON.stringify({ error: "user_id is required and must be a string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate that prospect data was provided
+    if (!rawText) {
+      return new Response(
+        JSON.stringify({ error: "prospect data is required (expected 'prospect', 'text', or 'prospects' field)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
