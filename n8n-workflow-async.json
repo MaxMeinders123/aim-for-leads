@@ -126,30 +126,8 @@
         "method": "POST",
         "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "user_id",
-              "value": "={{ $json.body.user_id }}"
-            },
-            {
-              "name": "company_domain",
-              "value": "={{ $json.body.company_domain }}"
-            },
-            {
-              "name": "company",
-              "value": "={{ $json.output[0].content[0].text }}"
-            },
-            {
-              "name": "status",
-              "value": "completed"
-            },
-            {
-              "name": "original_payload",
-              "value": "={{ $json.original_payload }}"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company: $json['output'][0].content[0].text,\n  status: 'completed',\n  original_payload: $json.original_payload\n}) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -220,30 +198,8 @@
         "method": "POST",
         "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "user_id",
-              "value": "={{ $json.body.user_id }}"
-            },
-            {
-              "name": "company_domain",
-              "value": "={{ $json.body.company_domain }}"
-            },
-            {
-              "name": "company_research_id",
-              "value": "={{ $json.body.company_research_id }}"
-            },
-            {
-              "name": "prospect",
-              "value": "={{ $json.parsed_contacts }}"
-            },
-            {
-              "name": "status",
-              "value": "completed"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company_research_id: $json.body.company_research_id,\n  prospect: $json.parsed_contacts,\n  status: 'completed'\n}) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
