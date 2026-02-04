@@ -160,7 +160,10 @@ const ResearchSystem = () => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'processing':
+      case 'prospects_pending':
         return <Clock className="h-4 w-4 text-yellow-500" />;
+      case 'company_complete':
+        return <CheckCircle2 className="h-4 w-4 text-blue-500" />;
       case 'completed':
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
       case 'rejected':
@@ -170,16 +173,29 @@ const ResearchSystem = () => {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      processing: 'Processing Company...',
+      company_complete: 'Company Complete',
+      prospects_pending: 'Finding Prospects...',
+      completed: 'Completed',
+      rejected: 'Rejected',
+    };
+    return labels[status] || status;
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
       processing: 'secondary',
+      company_complete: 'outline',
+      prospects_pending: 'secondary',
       completed: 'default',
       rejected: 'destructive',
     };
     return (
       <Badge variant={variants[status] || 'outline'} className="flex items-center gap-1">
         {getStatusIcon(status)}
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {getStatusLabel(status)}
       </Badge>
     );
   };
@@ -370,45 +386,91 @@ const ResearchSystem = () => {
         <Card className="mt-8">
           <CardHeader>
             <CardTitle className="text-lg">Configuration</CardTitle>
-            <CardDescription>Webhook URLs and endpoints for your n8n workflow</CardDescription>
+            <CardDescription>Webhook URLs and endpoints for your n8n workflows</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <div>
-              <p className="font-medium">n8n Webhook URL (Frontend → n8n):</p>
+          <CardContent className="space-y-6 text-sm">
+            {/* Step 1: Frontend to n8n */}
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <p className="font-semibold text-base mb-2">Step 1: Frontend → n8n (Company Research)</p>
+              <p className="text-muted-foreground mb-2">Your n8n webhook receives the initial request:</p>
               <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
                 {integrations.company_research_webhook_url || 'Not configured - set in Settings'}
               </code>
+              <p className="mt-2 text-muted-foreground">Payload sent:</p>
+              <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
+{`{ "user_id": "...", "company_domain": "example.com" }`}
+              </pre>
             </div>
             
-            <div>
-              <p className="font-medium">Edge Function URL (n8n → Supabase):</p>
+            {/* Step 2: n8n to Company Results */}
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <p className="font-semibold text-base mb-2">Step 2: n8n → receive-company-results</p>
+              <p className="text-muted-foreground mb-2">After company research, POST results here:</p>
               <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
-                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-research-results
+                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results
               </code>
-            </div>
-
-            <div>
-              <p className="font-medium">n8n HTTP POST Body (to Edge Function):</p>
+              <p className="mt-2 text-muted-foreground">Payload:</p>
               <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
 {`{
   "user_id": "{{$json.body.user_id}}",
   "company_domain": "{{$json.body.company_domain}}",
   "status": "completed",
-  "company_data": { ... },
-  "prospect_data": [ ... ]
+  "company_data": {
+    "name": "Company Name",
+    "industry": "Technology",
+    "employee_count": 500,
+    ...
+  }
 }`}
               </pre>
+              <p className="mt-2 text-xs text-muted-foreground">
+                ⚡ This automatically triggers People Research webhook
+              </p>
             </div>
 
-            <div>
-              <p className="font-medium">Clay Webhook URL:</p>
+            {/* Step 3: n8n People Research to Prospect Results */}
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <p className="font-semibold text-base mb-2">Step 3: n8n → receive-prospect-results</p>
+              <p className="text-muted-foreground mb-2">People Research webhook URL (configured in Settings):</p>
+              <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
+                {integrations.people_research_webhook_url || 'Not configured - set in Settings'}
+              </code>
+              <p className="mt-2 text-muted-foreground">After people research, POST results here:</p>
+              <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
+                https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results
+              </code>
+              <p className="mt-2 text-muted-foreground">Payload:</p>
+              <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
+{`{
+  "user_id": "{{$json.body.user_id}}",
+  "company_domain": "{{$json.body.company_domain}}",
+  "research_result_id": "{{$json.body.research_result_id}}",
+  "status": "completed",
+  "prospect_data": [
+    {
+      "first_name": "John",
+      "last_name": "Doe",
+      "title": "CTO",
+      "linkedin": "linkedin.com/in/johndoe",
+      "priority": "High",
+      "priority_reason": "Technical decision maker"
+    }
+  ]
+}`}
+              </pre>
+              <p className="mt-2 text-xs text-muted-foreground">
+                ⚡ This automatically triggers Clay webhook on completion
+              </p>
+            </div>
+
+            {/* Clay Integration */}
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <p className="font-semibold text-base mb-2">Step 4: Auto → Clay (on completion)</p>
+              <p className="text-muted-foreground mb-2">Clay webhook URL:</p>
               <code className="block mt-1 p-2 bg-muted rounded text-xs break-all">
                 {integrations.clay_webhook_url || 'Not configured - set in Settings'}
               </code>
-            </div>
-
-            <div>
-              <p className="font-medium">Clay Payload (auto-sent on completion):</p>
+              <p className="mt-2 text-muted-foreground">Payload sent automatically:</p>
               <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-auto">
 {`{
   "user_id": "...",
