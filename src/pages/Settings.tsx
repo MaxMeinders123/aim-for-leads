@@ -21,8 +21,9 @@ export default function Settings() {
   const [peopleResearchUrl, setPeopleResearchUrl] = useState(integrations.people_research_webhook_url || '');
   const [clayUrl, setClayUrl] = useState(integrations.clay_webhook_url || '');
   const [salesforceUrl, setSalesforceUrl] = useState(integrations.salesforce_webhook_url || '');
+  const [salesforceImportUrl, setSalesforceImportUrl] = useState(integrations.salesforce_import_webhook_url || '');
   const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState<'company' | 'people' | 'clay' | 'salesforce' | null>(null);
+  const [isTesting, setIsTesting] = useState<'company' | 'people' | 'clay' | 'salesforce' | 'salesforce_import' | null>(null);
 
   const isN8nCloudUrl = (url?: string) => {
     if (!url) return false;
@@ -54,11 +55,13 @@ export default function Settings() {
         setPeopleResearchUrl(peopleUrl);
         setClayUrl(data.clay_webhook_url || '');
         setSalesforceUrl(data.salesforce_webhook_url || '');
+        setSalesforceImportUrl((data as any).salesforce_import_webhook_url || '');
         setIntegrations({
           company_research_webhook_url: companyUrl,
           people_research_webhook_url: peopleUrl,
           clay_webhook_url: data.clay_webhook_url || '',
           salesforce_webhook_url: data.salesforce_webhook_url || '',
+          salesforce_import_webhook_url: (data as any).salesforce_import_webhook_url || '',
           n8n_webhook_url: data.n8n_webhook_url || '',
           dark_mode: data.dark_mode || false,
           sound_effects: data.sound_effects !== false,
@@ -81,6 +84,7 @@ export default function Settings() {
           people_research_webhook_url: peopleResearchUrl || null,
           clay_webhook_url: clayUrl || null,
           salesforce_webhook_url: salesforceUrl || null,
+          salesforce_import_webhook_url: salesforceImportUrl || null,
           dark_mode: integrations.dark_mode,
           sound_effects: integrations.sound_effects,
         })
@@ -93,6 +97,7 @@ export default function Settings() {
         people_research_webhook_url: peopleResearchUrl,
         clay_webhook_url: clayUrl,
         salesforce_webhook_url: salesforceUrl,
+        salesforce_import_webhook_url: salesforceImportUrl,
       });
 
       toast.success('Settings saved');
@@ -103,12 +108,13 @@ export default function Settings() {
     }
   };
 
-  const handleTestWebhook = async (type: 'company' | 'people' | 'clay' | 'salesforce') => {
+  const handleTestWebhook = async (type: 'company' | 'people' | 'clay' | 'salesforce' | 'salesforce_import') => {
     const urlMap = {
       company: companyResearchUrl,
       people: peopleResearchUrl,
       clay: clayUrl,
       salesforce: salesforceUrl,
+      salesforce_import: salesforceImportUrl,
     };
     const url = urlMap[type];
     
@@ -297,7 +303,32 @@ export default function Settings() {
               <div className="p-4 rounded-xl border border-border space-y-3">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">4</div>
-                  <Label htmlFor="salesforceUrl">Salesforce Import Webhook (n8n)</Label>
+                  <Label htmlFor="salesforceImportUrl">Salesforce Campaign Import Webhook (n8n)</Label>
+                </div>
+                <p className="text-xs text-muted-foreground ml-8">Fetches accounts from a Salesforce Campaign</p>
+                <div className="flex gap-2">
+                  <Input
+                    id="salesforceImportUrl"
+                    value={salesforceImportUrl}
+                    onChange={(e) => setSalesforceImportUrl(e.target.value)}
+                    placeholder="https://n8n.example.com/webhook/salesforce-campaign-import"
+                    className="h-10 rounded-lg flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => handleTestWebhook('salesforce_import')}
+                    disabled={isTesting === 'salesforce_import'}
+                    className="rounded-lg px-6"
+                  >
+                    {isTesting === 'salesforce_import' ? 'Testing...' : 'Test'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-border space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">5</div>
+                  <Label htmlFor="salesforceUrl">Salesforce Export Webhook (n8n)</Label>
                 </div>
                 <p className="text-xs text-muted-foreground ml-8">Sends individual contacts to Salesforce via n8n</p>
                 <div className="flex gap-2">
@@ -305,7 +336,7 @@ export default function Settings() {
                     id="salesforceUrl"
                     value={salesforceUrl}
                     onChange={(e) => setSalesforceUrl(e.target.value)}
-                    placeholder="https://n8n.example.com/webhook/salesforce-import"
+                    placeholder="https://n8n.example.com/webhook/salesforce-export"
                     className="h-10 rounded-lg flex-1"
                   />
                   <Button

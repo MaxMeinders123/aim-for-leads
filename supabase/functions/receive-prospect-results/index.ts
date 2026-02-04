@@ -19,12 +19,23 @@ serve(async (req) => {
     const body = await req.json();
     console.log("[receive-prospect-results] Payload:", JSON.stringify(body, null, 2));
 
-    const { user_id, company_domain, company_research_id, research_result_id, status, error_message } = body;
-    const rawText = body.prospect || body.text;
+    const { 
+      user_id, 
+      company_domain, 
+      company_research_id, 
+      company_id, // New: direct company_id from companies table
+      salesforce_account_id,
+      research_result_id, 
+      status, 
+      error_message 
+    } = body;
+    const rawText = body.prospect || body.text || body.prospects;
 
     // Parse raw LLM text (may have ```json fences) into structured JSON
-    const parseTextToJson = (rawText?: string): any => {
+    const parseTextToJson = (rawText?: string | object): any => {
       if (!rawText) return null;
+      if (typeof rawText === 'object') return rawText;
+      
       const cleaned = rawText
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
@@ -42,17 +53,19 @@ serve(async (req) => {
     const prospect_data = parseTextToJson(rawText);
     console.log("[receive-prospect-results] Parsed prospect_data:", prospect_data);
 
-    if (!user_id || !company_domain) {
+    if (!user_id) {
       return new Response(
-        JSON.stringify({ error: "user_id and company_domain are required" }),
+        JSON.stringify({ error: "user_id is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Find the company_research record
     let companyResearchId = company_research_id;
+    let resolvedCompanyId = company_id;
+    let resolvedSalesforceAccountId = salesforce_account_id;
     
-    if (!companyResearchId) {
+    if (!companyResearchId && company_domain) {
       // Try to find by user_id and company_domain
       const { data: companyRecord } = await supabase
         .from("company_research")
@@ -64,13 +77,22 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      if (!companyRecord) {
-        return new Response(
-          JSON.stringify({ error: "No matching company research found. Complete company research first." }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (companyRecord) {
+        companyResearchId = companyRecord.id;
       }
-      companyResearchId = companyRecord.id;
+    }
+
+    // Look up company from companies table if we have company_id
+    if (resolvedCompanyId && !resolvedSalesforceAccountId) {
+      const { data: company } = await supabase
+        .from("companies")
+        .select("id, salesforce_account_id")
+        .eq("id", resolvedCompanyId)
+        .single();
+
+      if (company) {
+        resolvedSalesforceAccountId = company.salesforce_account_id;
+      }
     }
 
     // Extract contacts array from prospect_data
@@ -80,21 +102,42 @@ serve(async (req) => {
     const insertedProspects: string[] = [];
     
     for (const contact of contacts) {
+      // Generate a unique personal_id for Clay tracking
+      const personalId = crypto.randomUUID();
+
+      const prospectInsert: Record<string, any> = {
+        user_id,
+        first_name: contact.first_name || null,
+        last_name: contact.last_name || null,
+        job_title: contact.job_title || contact.title || null,
+        linkedin_url: contact.linkedin || contact.linkedin_url || null,
+        priority: contact.priority || null,
+        priority_reason: contact.priority_reason || null,
+        pitch_type: contact.pitch_type || contact.title || null,
+        raw_data: contact,
+        sent_to_clay: false,
+        status: 'pending',
+        personal_id: personalId,
+      };
+
+      // Add company_research_id if we have it
+      if (companyResearchId) {
+        prospectInsert.company_research_id = companyResearchId;
+      }
+
+      // Add company_id if we have it
+      if (resolvedCompanyId) {
+        prospectInsert.company_id = resolvedCompanyId;
+      }
+
+      // Add salesforce_account_id if available
+      if (resolvedSalesforceAccountId) {
+        prospectInsert.salesforce_account_id = resolvedSalesforceAccountId;
+      }
+
       const { data: insertedProspect, error: insertError } = await supabase
         .from("prospect_research")
-        .insert({
-          company_research_id: companyResearchId,
-          user_id,
-          first_name: contact.first_name || null,
-          last_name: contact.last_name || null,
-          job_title: contact.job_title || contact.title || null,
-          linkedin_url: contact.linkedin || contact.linkedin_url || null,
-          priority: contact.priority || null,
-          priority_reason: contact.priority_reason || null,
-          pitch_type: contact.pitch_type || contact.title || null,
-          raw_data: contact,
-          sent_to_clay: false,
-        })
+        .insert(prospectInsert)
         .select("id")
         .single();
 
@@ -110,7 +153,7 @@ serve(async (req) => {
     // Update legacy research_results table for backwards compatibility
     let legacyId = research_result_id;
     
-    if (!legacyId) {
+    if (!legacyId && company_domain) {
       const { data: existingRecord } = await supabase
         .from("research_results")
         .select("id")
@@ -144,6 +187,7 @@ serve(async (req) => {
       JSON.stringify({ 
         received: true,
         company_research_id: companyResearchId,
+        company_id: resolvedCompanyId,
         prospects_inserted: insertedProspects.length,
         prospect_ids: insertedProspects,
         status: status === "rejected" ? "rejected" : "completed",

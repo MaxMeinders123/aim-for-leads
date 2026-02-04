@@ -46,6 +46,7 @@ export interface UserIntegrations {
   people_research_webhook_url?: string;
   clay_webhook_url?: string;
   salesforce_webhook_url?: string;
+  salesforce_import_webhook_url?: string;
   // Keep legacy field for backwards compatibility
   n8n_webhook_url?: string;
   dark_mode: boolean;
@@ -265,6 +266,7 @@ export const useAppStore = create<AppState>((set) => ({
     people_research_webhook_url: '',
     clay_webhook_url: '',
     salesforce_webhook_url: '',
+    salesforce_import_webhook_url: '',
     n8n_webhook_url: '',
     dark_mode: false,
     sound_effects: true,

@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Users, Linkedin, Send, CheckCircle2, Loader2 } from 'lucide-react';
+import { Users, Linkedin, Send, CheckCircle2, Loader2, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { StatusBadge } from './StatusBadge';
 
 interface Prospect {
   id: string;
@@ -16,6 +17,10 @@ interface Prospect {
   priority: string | null;
   priority_reason: string | null;
   pitch_type: string | null;
+  email?: string | null;
+  phone?: string | null;
+  status?: string | null;
+  salesforce_url?: string | null;
   sent_to_clay: boolean;
   sent_to_clay_at: string | null;
 }
@@ -33,7 +38,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const unsent = prospects.filter(p => !p.sent_to_clay).map(p => p.id);
+      const unsent = prospects.filter(p => !p.sent_to_clay && p.status !== 'inputted' && p.status !== 'duplicate').map(p => p.id);
       setSelectedIds(new Set(unsent));
     } else {
       setSelectedIds(new Set());
@@ -92,25 +97,33 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
   };
 
   const getPriorityBadgeClass = (priority: string | null) => {
-    switch (priority) {
-      case 'High':
-        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
-      case 'Medium':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
-      case 'Low':
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400';
+    switch (priority?.toLowerCase()) {
+      case 'high':
+        return 'bg-destructive/10 text-destructive dark:bg-destructive/20';
+      case 'medium':
+        return 'bg-warning/10 text-warning-foreground dark:bg-warning/20';
+      case 'low':
+        return 'bg-muted text-muted-foreground';
       default:
         return '';
     }
   };
 
-  const unsentCount = prospects.filter(p => !p.sent_to_clay).length;
-  const allUnsent = prospects.filter(p => !p.sent_to_clay);
-  const allSelected = allUnsent.length > 0 && allUnsent.every(p => selectedIds.has(p.id));
+  // Count prospects that can be sent (pending status, not yet sent)
+  const sendableCount = prospects.filter(p => 
+    !p.sent_to_clay && 
+    (!p.status || p.status === 'pending')
+  ).length;
+
+  const allSendable = prospects.filter(p => 
+    !p.sent_to_clay && 
+    (!p.status || p.status === 'pending')
+  );
+  const allSelected = allSendable.length > 0 && allSendable.every(p => selectedIds.has(p.id));
 
   // Filter prospects based on showUnsentOnly toggle
   const filteredProspects = showUnsentOnly
-    ? prospects.filter(p => !p.sent_to_clay)
+    ? prospects.filter(p => !p.sent_to_clay && (!p.status || p.status === 'pending'))
     : prospects;
 
   const formatTimestamp = (timestamp: string | null) => {
@@ -132,8 +145,8 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
             <Users className="h-5 w-5" />
             Prospects
             <Badge variant="secondary">{prospects.length} contacts</Badge>
-            {unsentCount > 0 && (
-              <Badge variant="outline">{unsentCount} unsent</Badge>
+            {sendableCount > 0 && (
+              <Badge variant="outline">{sendableCount} pending</Badge>
             )}
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -168,9 +181,9 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
             id="show-unsent-only"
           />
           <label htmlFor="show-unsent-only" className="text-sm text-muted-foreground cursor-pointer">
-            Show unsent only
+            Show pending only
           </label>
-          {unsentCount > 0 && !showUnsentOnly && (
+          {sendableCount > 0 && !showUnsentOnly && (
             <span className="text-xs text-muted-foreground ml-auto">
               (All {prospects.length} shown)
             </span>
@@ -178,7 +191,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
         </div>
 
         {/* Select All */}
-        {unsentCount > 0 && !showUnsentOnly && (
+        {sendableCount > 0 && !showUnsentOnly && (
           <div className="flex items-center gap-2 mb-4 pb-3 border-b">
             <Checkbox
               checked={allSelected}
@@ -186,7 +199,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
               id="select-all"
             />
             <label htmlFor="select-all" className="text-sm text-muted-foreground cursor-pointer">
-              Select all unsent ({unsentCount})
+              Select all pending ({sendableCount})
             </label>
           </div>
         )}
@@ -195,25 +208,30 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
         <div className="space-y-3">
           {filteredProspects.length === 0 && (
             <p className="text-center text-muted-foreground py-8">
-              {showUnsentOnly ? 'All prospects have been sent to Clay' : 'No prospects found'}
+              {showUnsentOnly ? 'All prospects have been processed' : 'No prospects found'}
             </p>
           )}
           {filteredProspects.map((prospect) => {
             const isSending = sendingIds.has(prospect.id);
             const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Unknown';
+            const canBeSent = !prospect.sent_to_clay && (!prospect.status || prospect.status === 'pending');
             
             return (
               <div 
                 key={prospect.id} 
                 className={`p-4 border rounded-lg transition-colors ${
-                  prospect.sent_to_clay 
-                    ? 'bg-muted/30 opacity-75' 
+                  prospect.status === 'inputted' 
+                    ? 'bg-accent/30 opacity-90' 
+                    : prospect.status === 'duplicate'
+                    ? 'bg-destructive/10 opacity-80'
+                    : prospect.sent_to_clay
+                    ? 'bg-muted/30 opacity-75'
                     : 'bg-card hover:bg-muted/50'
                 }`}
               >
                 <div className="flex items-start gap-3">
                   {/* Checkbox */}
-                  {!prospect.sent_to_clay && (
+                  {canBeSent && (
                     <Checkbox
                       checked={selectedIds.has(prospect.id)}
                       onCheckedChange={(checked) => handleSelectOne(prospect.id, checked as boolean)}
@@ -232,13 +250,16 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                           {prospect.priority}
                         </Badge>
                       )}
+                      {prospect.status && (
+                        <StatusBadge status={prospect.status} />
+                      )}
                       {prospect.pitch_type && (
                         <Badge variant="outline" className="text-xs">
                           {prospect.pitch_type}
                         </Badge>
                       )}
-                      {prospect.sent_to_clay && (
-                        <Badge variant="default" className="bg-green-600 text-white">
+                      {prospect.sent_to_clay && !prospect.status && (
+                        <Badge variant="default" className="bg-primary text-primary-foreground">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Sent to Clay
                         </Badge>
@@ -248,6 +269,14 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                     {/* Job Title */}
                     {prospect.job_title && (
                       <p className="text-sm text-muted-foreground mb-2">{prospect.job_title}</p>
+                    )}
+
+                    {/* Contact Info (if enriched) */}
+                    {(prospect.email || prospect.phone) && (
+                      <div className="flex gap-4 text-sm text-muted-foreground mb-2">
+                        {prospect.email && <span>{prospect.email}</span>}
+                        {prospect.phone && <span>{prospect.phone}</span>}
+                      </div>
                     )}
 
                     {/* Sent Timestamp */}
@@ -278,9 +307,24 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                         <Linkedin className="h-4 w-4" />
                       </a>
                     )}
+
+                    {/* Salesforce Link - show if inputted/duplicate */}
+                    {prospect.salesforce_url && (
+                      <a
+                        href={prospect.salesforce_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:text-primary/80"
+                      >
+                        <Badge variant="outline" className="gap-1">
+                          <ExternalLink className="h-3 w-3" />
+                          SF
+                        </Badge>
+                      </a>
+                    )}
                     
                     {/* Send to Clay button */}
-                    {!prospect.sent_to_clay && (
+                    {canBeSent && (
                       <Button
                         size="sm"
                         variant="outline"

@@ -81,6 +81,11 @@ export type Database = {
           id: string
           linkedin_url: string | null
           name: string
+          salesforce_account_id: string | null
+          salesforce_campaign_id: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
           website: string | null
         }
         Insert: {
@@ -89,6 +94,11 @@ export type Database = {
           id?: string
           linkedin_url?: string | null
           name: string
+          salesforce_account_id?: string | null
+          salesforce_campaign_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
           website?: string | null
         }
         Update: {
@@ -97,6 +107,11 @@ export type Database = {
           id?: string
           linkedin_url?: string | null
           name?: string
+          salesforce_account_id?: string | null
+          salesforce_campaign_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
           website?: string | null
         }
         Relationships: [
@@ -258,56 +273,87 @@ export type Database = {
       prospect_research: {
         Row: {
           clay_response: Json | null
+          company_id: string | null
           company_research_id: string
           created_at: string
+          email: string | null
           first_name: string | null
           id: string
           job_title: string | null
           last_name: string | null
           linkedin_url: string | null
+          mobile: string | null
+          personal_id: string | null
+          phone: string | null
           pitch_type: string | null
           priority: string | null
           priority_reason: string | null
           raw_data: Json | null
+          salesforce_account_id: string | null
+          salesforce_url: string | null
           sent_to_clay: boolean
           sent_to_clay_at: string | null
+          status: string | null
           user_id: string
         }
         Insert: {
           clay_response?: Json | null
+          company_id?: string | null
           company_research_id: string
           created_at?: string
+          email?: string | null
           first_name?: string | null
           id?: string
           job_title?: string | null
           last_name?: string | null
           linkedin_url?: string | null
+          mobile?: string | null
+          personal_id?: string | null
+          phone?: string | null
           pitch_type?: string | null
           priority?: string | null
           priority_reason?: string | null
           raw_data?: Json | null
+          salesforce_account_id?: string | null
+          salesforce_url?: string | null
           sent_to_clay?: boolean
           sent_to_clay_at?: string | null
+          status?: string | null
           user_id: string
         }
         Update: {
           clay_response?: Json | null
+          company_id?: string | null
           company_research_id?: string
           created_at?: string
+          email?: string | null
           first_name?: string | null
           id?: string
           job_title?: string | null
           last_name?: string | null
           linkedin_url?: string | null
+          mobile?: string | null
+          personal_id?: string | null
+          phone?: string | null
           pitch_type?: string | null
           priority?: string | null
           priority_reason?: string | null
           raw_data?: Json | null
+          salesforce_account_id?: string | null
+          salesforce_url?: string | null
           sent_to_clay?: boolean
           sent_to_clay_at?: string | null
+          status?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "prospect_research_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "prospect_research_company_research_id_fkey"
             columns: ["company_research_id"]
@@ -368,6 +414,7 @@ export type Database = {
           id: string
           n8n_webhook_url: string | null
           people_research_webhook_url: string | null
+          salesforce_import_webhook_url: string | null
           salesforce_webhook_url: string | null
           sound_effects: boolean | null
           updated_at: string
@@ -381,6 +428,7 @@ export type Database = {
           id?: string
           n8n_webhook_url?: string | null
           people_research_webhook_url?: string | null
+          salesforce_import_webhook_url?: string | null
           salesforce_webhook_url?: string | null
           sound_effects?: boolean | null
           updated_at?: string
@@ -394,6 +442,7 @@ export type Database = {
           id?: string
           n8n_webhook_url?: string | null
           people_research_webhook_url?: string | null
+          salesforce_import_webhook_url?: string | null
           salesforce_webhook_url?: string | null
           sound_effects?: boolean | null
           updated_at?: string
