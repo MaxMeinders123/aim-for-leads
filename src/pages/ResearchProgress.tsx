@@ -70,7 +70,9 @@ const parseToArray = (text?: string): string[] => {
 };
 
 // Build the structured payload for company research
-const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
+const buildCompanyPayload = (campaign: Campaign | null, company: Company, userId: string) => ({
+  user_id: userId,
+  company_domain: company.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || company.name.toLowerCase().replace(/\s+/g, ''),
   campaign: {
     campaignName: campaign?.name || '',
     product: campaign?.product || '',
@@ -95,8 +97,11 @@ const buildCompanyPayload = (campaign: Campaign | null, company: Company) => ({
 const buildPeoplePayload = (
   campaign: Campaign | null, 
   company: Company, 
-  companyResearchResult: CompanyResearchResult | null
+  companyResearchResult: CompanyResearchResult | null,
+  userId: string
 ) => ({
+  user_id: userId,
+  company_domain: company.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || company.name.toLowerCase().replace(/\s+/g, ''),
   campaign: {
     campaignName: campaign?.name || '',
     product: campaign?.product || '',
@@ -197,6 +202,7 @@ export default function ResearchProgress() {
     companies,
     selectedCampaign,
     integrations,
+    user,
   } = useAppStore();
 
   const {
@@ -231,7 +237,7 @@ export default function ResearchProgress() {
     const company = companies.find(c => c.id === companyId);
     if (!company) return;
 
-    const payload = buildCompanyPayload(selectedCampaign, company);
+    const payload = buildCompanyPayload(selectedCampaign, company, user?.id || '');
     
     // Expand the company card to show progress
     setExpandedCompanies(prev => new Set(prev).add(companyId));
@@ -258,7 +264,7 @@ export default function ResearchProgress() {
       const companyData = existingProgress?.companyData || null;
       
       // Build people payload with company research results
-      const peoplePayload = buildPeoplePayload(selectedCampaign, company, companyData);
+      const peoplePayload = buildPeoplePayload(selectedCampaign, company, companyData, user?.id || '');
       
       updateCompanyProgress(companyId, { step: 'people', error: undefined });
       
@@ -275,7 +281,7 @@ export default function ResearchProgress() {
       }
     }
 
-  }, [companies, selectedCampaign, integrations, updateCompanyProgress, companiesProgress]);
+  }, [companies, selectedCampaign, integrations, updateCompanyProgress, companiesProgress, user]);
 
   // Process companies sequentially: Company Research → People Research
   const processCompanies = useCallback(async () => {
@@ -286,7 +292,7 @@ export default function ResearchProgress() {
 
     for (let i = 0; i < selectedCompanies.length; i++) {
       const company = selectedCompanies[i];
-      const payload = buildCompanyPayload(selectedCampaign, company);
+      const payload = buildCompanyPayload(selectedCampaign, company, user?.id || '');
 
       console.log(`[Research] Starting company ${i + 1}/${selectedCompanies.length}: ${company.name}`);
 
@@ -343,7 +349,7 @@ export default function ResearchProgress() {
       setResearchProgress({ currentStep: 'people' });
       
       // Build people payload with company research results included
-      const peoplePayload = buildPeoplePayload(selectedCampaign, company, parsedCompanyData);
+      const peoplePayload = buildPeoplePayload(selectedCampaign, company, parsedCompanyData, user?.id || '');
       // Add company_id and campaign_id for the callback
       (peoplePayload as any).company_id = company.id;
       (peoplePayload as any).campaign_id = selectedCampaign?.id;
@@ -393,7 +399,7 @@ export default function ResearchProgress() {
     isProcessingRef.current = false;
     toast.success('Research complete!');
     
-  }, [isRunning, companies, selectedCampaign, integrations, setResearchProgress, updateCompanyProgress]);
+  }, [isRunning, companies, selectedCampaign, integrations, setResearchProgress, updateCompanyProgress, user]);
 
   // Start processing when component mounts
   useEffect(() => {
