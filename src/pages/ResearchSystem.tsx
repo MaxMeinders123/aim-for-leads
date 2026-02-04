@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, Building2, Users, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Loader2, Search, Building2, Users, AlertCircle, CheckCircle2, Clock, Cloud, ExternalLink, Globe, Linkedin } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppStore } from '@/stores/appStore';
 import { toast } from 'sonner';
@@ -327,10 +327,70 @@ const ResearchSystem = () => {
                     )}
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <pre className="p-4 bg-muted rounded-md overflow-auto text-sm max-h-64">
-                    {JSON.stringify(currentResult.company_data, null, 2)}
-                  </pre>
+                <CardContent className="space-y-4">
+                  {/* Company Status */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {currentResult.company_data.company && (
+                      <span className="font-semibold text-lg">{currentResult.company_data.company}</span>
+                    )}
+                    {currentResult.company_data.company_status && (
+                      <Badge 
+                        variant={currentResult.company_data.company_status === 'Operating' ? 'default' : 'secondary'}
+                        className={currentResult.company_data.company_status === 'Operating' 
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                          : currentResult.company_data.company_status === 'Acquired'
+                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                          : ''}
+                      >
+                        {currentResult.company_data.company_status}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Acquired By Info */}
+                  {currentResult.company_data.acquiredBy && (
+                    <p className="text-sm text-muted-foreground">
+                      Acquired by <span className="font-medium text-foreground">{currentResult.company_data.acquiredBy}</span>
+                      {currentResult.company_data.effectiveDate && ` (${currentResult.company_data.effectiveDate})`}
+                    </p>
+                  )}
+
+                  {/* Cloud Preference */}
+                  {currentResult.company_data.cloud_preference && (
+                    <div className="p-3 bg-muted rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Cloud className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Cloud Provider</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{currentResult.company_data.cloud_preference.provider}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {currentResult.company_data.cloud_preference.confidence}% confidence
+                        </Badge>
+                      </div>
+                      
+                      {/* Evidence URLs */}
+                      {currentResult.company_data.cloud_preference.evidence_urls?.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <p className="text-xs text-muted-foreground">Evidence:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {currentResult.company_data.cloud_preference.evidence_urls.slice(0, 3).map((url: string, i: number) => (
+                              <a
+                                key={i}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline flex items-center gap-1"
+                              >
+                                {url.includes('linkedin') ? <Linkedin className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
+                                Source {i + 1}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -342,13 +402,75 @@ const ResearchSystem = () => {
                   <CardTitle className="flex items-center gap-2">
                     <Users className="h-5 w-5" />
                     Prospects
+                    {currentResult.prospect_data.contacts && (
+                      <Badge variant="secondary">{currentResult.prospect_data.contacts.length} contacts</Badge>
+                    )}
                     {currentResult.status === 'completed' && (
                       <Badge variant="default" className="ml-2">Complete</Badge>
                     )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {Array.isArray(currentResult.prospect_data) ? (
+                  {/* Handle contacts array from prospect_data */}
+                  {currentResult.prospect_data.contacts && Array.isArray(currentResult.prospect_data.contacts) ? (
+                    <div className="space-y-3">
+                      {currentResult.prospect_data.contacts.map((contact: any, index: number) => (
+                        <div key={index} className="p-4 border rounded-lg bg-card hover:bg-muted/50 transition-colors">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              {/* Name and Priority */}
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="font-medium">
+                                  {contact.first_name} {contact.last_name}
+                                </span>
+                                <Badge 
+                                  className={
+                                    contact.priority === 'High' 
+                                      ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                      : contact.priority === 'Medium'
+                                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                      : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                                  }
+                                >
+                                  {contact.priority}
+                                </Badge>
+                                {contact.pitch_type && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {contact.pitch_type}
+                                  </Badge>
+                                )}
+                              </div>
+                              
+                              {/* Job Title */}
+                              {contact.job_title && (
+                                <p className="text-sm text-muted-foreground mb-2">{contact.job_title}</p>
+                              )}
+                              
+                              {/* Priority Reason */}
+                              {contact.priority_reason && (
+                                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
+                                  {contact.priority_reason}
+                                </p>
+                              )}
+                            </div>
+                            
+                            {/* LinkedIn Link */}
+                            {contact.linkedin && (
+                              <a
+                                href={contact.linkedin.startsWith('http') ? contact.linkedin : `https://${contact.linkedin}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:text-primary/80 shrink-0 flex items-center gap-1 text-sm"
+                              >
+                                <Linkedin className="h-4 w-4" />
+                                <span className="hidden sm:inline">Profile</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : Array.isArray(currentResult.prospect_data) ? (
                     <div className="space-y-3">
                       {currentResult.prospect_data.map((prospect: any, index: number) => (
                         <div key={index} className="p-3 border rounded-lg">
