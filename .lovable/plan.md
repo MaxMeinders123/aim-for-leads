@@ -1,231 +1,199 @@
 
-# Fix n8n Integration: Separate Company and Prospect Research Flow
+
+# Plan: Unified Contacts Page with Company-Based Research Display
 
 ## Overview
 
-This plan addresses the issues with the current n8n integration by creating a properly separated, sequential research flow with:
-1. **Separate Edge Functions** for company and prospect research
-2. **Proper Database Schema** with company_research and prospect_research tables
-3. **Sequential Processing** where prospect research only starts after company research completes
-4. **Individual Prospect Selection** for sending to Clay (not just bulk)
+This plan consolidates the research workflow and contacts view into a single, unified "Contacts" page. Companies become the primary organizational unit, with their prospects (research results) displayed inline. Users can view all companies, see their research status, view prospects, and send them to Clay - all from one screen.
 
-## Current Problems Identified
+## Current State Analysis
 
-1. **Single Combined Endpoint**: `receive-research-results` handles both company and prospect data, causing race conditions when n8n sends both types simultaneously
-2. **Auto-Detection Issues**: The field detection logic (`company`, ` company`, `prospect`) is fragile
-3. **No True Sequential Dependency**: n8n can send prospect data before company data is saved
-4. **Bulk Clay Only**: All prospects are sent to Clay at once, no individual selection
-5. **Data Mixed in One Table**: `research_results` table stores both company and prospect data as JSONB blobs instead of normalized tables
-6. **No Foreign Key Links**: Prospects aren't properly linked to their parent company records
+**Problem Areas:**
+1. Companies from `company_research` table are not being loaded/displayed in the main contacts view
+2. The "Contacts" page (`Results.tsx`) only shows manually pushed contacts from the in-memory store
+3. Research data lives in the database (`company_research` + `prospect_research`) but the UI doesn't fetch it
+4. Multiple pages for research progress, results, and contacts create confusion
+
+**Existing Assets:**
+- `CompanyProspectCard` component - already groups prospects by company with Send to Clay functionality
+- `ProspectTable` component - displays prospects with status badges and Clay integration
+- `StatusBadge` component - shows prospect status (Pending, Sent, Inputted, Duplicate)
+- Database tables have all necessary columns (`company_research`, `prospect_research`)
 
 ## Solution Architecture
 
 ```text
-+------------------+     +-----------------------+     +------------------------+
-| User Initiates   |     | Frontend sends to n8n |     | n8n Company Research   |
-| Research         | --> | Company Webhook       | --> | Workflow               |
-+------------------+     +-----------------------+     +------------------------+
-                                                                  |
-                                                                  v
-+------------------------+     +------------------------+     +------------------------+
-| company_research table | <-- | receive-company-results| <-- | n8n POSTs results      |
-| (company_id, data...)  |     | Edge Function          |     | to edge function       |
-+------------------------+     +------------------------+     +------------------------+
-         |
-         | status = 'completed' triggers...
-         v
-+------------------------+     +------------------------+     +------------------------+
-| Frontend detects       |     | n8n Prospect Research  | <-- | Automatic trigger OR   |
-| completion, shows      | --> | Workflow               |     | manual button          |
-| "Start Prospect"       |     +------------------------+     +------------------------+
-+------------------------+                |
-                                          v
-+------------------------+     +------------------------+     +------------------------+
-| prospect_research table| <-- | receive-prospect-results| <-- | n8n POSTs results     |
-| (prospect_id, company  |     | Edge Function           |     | to edge function      |
-| _id FK, data...)       |     +-------------------------+     +-----------------------+
-+------------------------+
-         |
-         v
-+------------------------+     +------------------------+
-| Frontend shows         |     | User selects prospects |
-| prospects with         | --> | individually to send   |
-| checkboxes             |     | to Clay                |
-+------------------------+     +------------------------+
++------------------+
+|   Contacts Page  |
++------------------+
+        |
+        v
++------------------+      +-----------------------+
+|  Load companies  | ---> | company_research      |
+|  from database   |      | (grouped by user)     |
++------------------+      +-----------------------+
+        |
+        v
++------------------+      +-----------------------+
+|  For each        | ---> | prospect_research     |
+|  company, load   |      | (linked via           |
+|  its prospects   |      |  company_research_id) |
++------------------+      +-----------------------+
+        |
+        v
++------------------+
+|  Display using   |
+|  CompanyProspect |
+|  Card component  |
++------------------+
 ```
 
-## Implementation Details
+## Implementation Steps
 
-### 1. Database Schema Changes
+### Step 1: Create New Unified Contacts Page
 
-**New Table: `company_research`**
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | FK to auth.users |
-| campaign_id | uuid | FK to campaigns (optional) |
-| company_domain | text | Domain being researched |
-| company_name | text | Resolved company name |
-| status | text | 'processing', 'completed', 'failed' |
-| company_status | text | 'Operating', 'Acquired', 'Bankrupt' |
-| acquired_by | text | If acquired, by whom |
-| cloud_provider | text | Detected cloud preference |
-| cloud_confidence | integer | Confidence score (0-100) |
-| evidence_urls | text[] | Array of evidence URLs |
-| raw_data | jsonb | Full raw response for debugging |
-| created_at | timestamptz | When created |
-| updated_at | timestamptz | Last update |
+**File:** `src/pages/Contacts.tsx` (new file)
 
-**New Table: `prospect_research`**
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| company_research_id | uuid | FK to company_research |
-| user_id | uuid | FK to auth.users |
-| first_name | text | Prospect first name |
-| last_name | text | Prospect last name |
-| job_title | text | Current job title |
-| linkedin_url | text | LinkedIn profile URL |
-| priority | text | 'High', 'Medium', 'Low' |
-| priority_reason | text | Why this priority |
-| pitch_type | text | Recommended pitch angle |
-| sent_to_clay | boolean | Has been sent to Clay |
-| sent_to_clay_at | timestamptz | When sent to Clay |
-| created_at | timestamptz | When created |
+This page will:
+- Fetch all `company_research` records for the logged-in user from Supabase
+- For each company, fetch associated `prospect_research` records
+- Display companies using the existing `CompanyProspectCard` component
+- Include real-time subscriptions to update when new research completes
+- Add filters (by status, by date, search by company name)
 
-### 2. Edge Function: `receive-company-results` (Update)
+Key features:
+- Header with stats (total companies, total prospects, pending count)
+- Search/filter bar
+- List of company cards, each expandable to show prospects
+- "Start Research" button to add new companies (links to existing flow)
 
-Updates the existing function to:
-- Accept company research data from n8n
-- Parse the raw LLM text (strip markdown fences)
-- Insert into `company_research` table with normalized columns
-- Return the `company_research_id` for n8n to use in prospect research
-- NOT auto-trigger prospect research (let frontend control this)
+### Step 2: Update App Router
 
-**Expected Payload:**
-```json
-{
-  "user_id": "uuid",
-  "company_domain": "klm.com",
-  "company": "```json\n{...}\n```",
-  "status": "completed"
-}
+**File:** `src/App.tsx`
+
+Changes:
+- Import the new `Contacts` page
+- Update the `/contacts` route to use the new unified component
+- Keep `/results` as an alias or remove it
+
+### Step 3: Adapt CompanyProspectCard for Database-First Display
+
+**File:** `src/components/research/CompanyProspectCard.tsx`
+
+Minor updates:
+- Ensure it handles the data shape from `company_research` table
+- Add company research status indicator (completed, processing, failed)
+- Show "Add Company" button in empty state
+
+### Step 4: Update Navigation Sidebar
+
+**File:** `src/components/AppSidebar.tsx`
+
+Changes:
+- Ensure "Contacts" links to the new unified page
+- Consider renaming to "Companies & Contacts" or keeping as "Contacts"
+- Update active state detection
+
+### Step 5: Add Real-time Subscriptions
+
+The new Contacts page will subscribe to:
+- `company_research` table for the current user
+- `prospect_research` table linked to user's companies
+
+This ensures live updates when research completes in the background.
+
+## Technical Details
+
+### Database Queries
+
+**Load Companies with Research:**
+```typescript
+const { data: companies } = await supabase
+  .from('company_research')
+  .select('*')
+  .eq('user_id', user.id)
+  .order('created_at', { ascending: false });
 ```
 
-### 3. Edge Function: `receive-prospect-results` (Update)
-
-Updates the existing function to:
-- Accept prospect research data from n8n
-- Require `company_research_id` to link prospects to company
-- Parse the raw LLM text with contacts array
-- Insert each prospect as a separate row in `prospect_research` table
-- Set `sent_to_clay = false` by default
-
-**Expected Payload:**
-```json
-{
-  "user_id": "uuid",
-  "company_domain": "klm.com",
-  "company_research_id": "uuid",
-  "prospect": "```json\n{...}\n```",
-  "status": "completed"
-}
+**Load Prospects for a Company:**
+```typescript
+const { data: prospects } = await supabase
+  .from('prospect_research')
+  .select('*')
+  .eq('company_research_id', companyId)
+  .order('created_at', { ascending: false });
 ```
 
-### 4. New Edge Function: `send-prospect-to-clay`
+### Component Structure
 
-A new function specifically for sending individual prospects to Clay:
-- Accepts `prospect_id` (single) or `prospect_ids` (array)
-- Fetches prospect data and related company data
-- Sends to configured Clay webhook
-- Updates `sent_to_clay = true` and `sent_to_clay_at` timestamp
-- Returns success/failure per prospect
+```text
+Contacts.tsx
+├── Header (title, stats, actions)
+├── Filters (search, status dropdown)
+├── Company List
+│   └── CompanyProspectCard (for each company)
+│       ├── Company header (name, domain, status, prospect count)
+│       └── Expandable prospect list
+│           └── ProspectRow (name, title, status, Clay button)
+└── Empty State (when no companies researched)
+```
 
-### 5. Frontend Updates
+### Real-time Setup
 
-**A. Research System Page (`ResearchSystem.tsx`)**
+```typescript
+useEffect(() => {
+  const channel = supabase
+    .channel('contacts-realtime')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'company_research',
+      filter: `user_id=eq.${user.id}`,
+    }, handleCompanyUpdate)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'prospect_research',
+      filter: `user_id=eq.${user.id}`,
+    }, handleProspectUpdate)
+    .subscribe();
 
-Major refactor to:
-- Display company research status in a dedicated card
-- Show "Start Prospect Research" button only after company research completes
-- Display prospects in a table with checkboxes
-- Add "Send to Clay" button for selected prospects
-- Add individual "Send to Clay" icon button on each prospect row
-- Show "Sent" badge on prospects already sent to Clay
-
-**B. New Components**
-
-Create reusable components:
-- `CompanyResearchCard` - Shows company status, cloud preference, evidence
-- `ProspectTable` - Table of prospects with selection, sorting, Clay status
-- `ProspectRow` - Individual prospect with checkbox and Clay button
-
-**C. Real-time Updates**
-
-Separate subscriptions for:
-- `company_research` table changes
-- `prospect_research` table changes
-
-### 6. Delete Unified Endpoint
-
-After implementing the separated endpoints, delete:
-- `supabase/functions/receive-research-results/` directory
+  return () => supabase.removeChannel(channel);
+}, [user?.id]);
+```
 
 ## Files to Create/Modify
 
 | File | Action | Description |
 |------|--------|-------------|
-| `supabase/migrations/[timestamp]_separate_research_tables.sql` | Create | New company_research and prospect_research tables |
-| `supabase/functions/receive-company-results/index.ts` | Modify | Insert into company_research table |
-| `supabase/functions/receive-prospect-results/index.ts` | Modify | Insert into prospect_research table with FK |
-| `supabase/functions/send-prospect-to-clay/index.ts` | Create | New endpoint for individual Clay sending |
-| `src/pages/ResearchSystem.tsx` | Modify | Refactor for two-step flow with individual selection |
-| `src/components/research/CompanyResearchCard.tsx` | Create | Company research display component |
-| `src/components/research/ProspectTable.tsx` | Create | Prospects table with selection |
-| `supabase/functions/receive-research-results/` | Delete | Remove unified endpoint |
+| `src/pages/Contacts.tsx` | Create | New unified contacts page |
+| `src/App.tsx` | Modify | Update routes |
+| `src/components/AppSidebar.tsx` | Modify | Update navigation (optional) |
+| `src/components/research/CompanyProspectCard.tsx` | Modify | Adapt for database-first use |
 
-## RLS Policies
+## Migration Notes
 
-**company_research table:**
-- SELECT: Users can view their own company research (`user_id = auth.uid()`)
-- INSERT: Edge functions can insert (using service role)
-- UPDATE: Edge functions can update (using service role)
+- The existing `Results.tsx` can be kept for backward compatibility or removed
+- Research progress page (`ResearchProgress.tsx`) remains for active research sessions
+- Data in `company_research` and `prospect_research` will be the source of truth
+- No database schema changes required - existing tables support this design
 
-**prospect_research table:**
-- SELECT: Users can view prospects for their company research
-- INSERT: Edge functions can insert (using service role)
-- UPDATE: Users can update `sent_to_clay` status; edge functions can update all
+## User Experience Flow
 
-## n8n Workflow Configuration
+1. User navigates to **Contacts** in sidebar
+2. Sees all researched companies in a list, most recent first
+3. Each company card shows:
+   - Company name and domain
+   - Research status (completed/processing/failed)
+   - Number of prospects found
+   - Expandable arrow
+4. Clicking a company expands to show prospects
+5. Each prospect shows:
+   - Name and job title
+   - Status badge (Pending, Sent to Clay, Inputted, Duplicate)
+   - LinkedIn link
+   - "Send to Clay" button (if pending)
+   - Salesforce link (if inputted)
+6. User can filter by search term or status
+7. "Start New Research" button leads to the research flow
 
-Update n8n workflows to:
-
-1. **Company Research Workflow:**
-   - POST to `receive-company-results`
-   - Include: `user_id`, `company_domain`, `company` (raw LLM text)
-   - Do NOT auto-trigger prospect research
-
-2. **Prospect Research Workflow:**
-   - Triggered separately (by user action or another n8n trigger)
-   - POST to `receive-prospect-results`
-   - Include: `user_id`, `company_domain`, `company_research_id`, `prospect` (raw LLM text)
-
-## User Flow After Implementation
-
-1. User enters company domain and clicks "Start Company Research"
-2. Company research runs, results appear in real-time
-3. "Start Prospect Research" button becomes active
-4. User clicks button to trigger prospect research
-5. Prospects appear in table as they're found
-6. User selects prospects with checkboxes
-7. User clicks "Send Selected to Clay" or individual Clay buttons
-8. Sent prospects show "Sent" badge
-
-## Technical Summary
-
-- **2 new database tables** with proper foreign keys
-- **3 edge functions** (update 2 existing, create 1 new)
-- **1 edge function deleted** (unified endpoint)
-- **3 new UI components** for cleaner code organization
-- **Separate realtime subscriptions** for company and prospect data
-- **Individual prospect Clay sending** with tracking
