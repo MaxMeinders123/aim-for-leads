@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { url } = await req.json();
+    const { url, user_id } = await req.json();
 
     if (!url) {
       return new Response(
@@ -41,6 +41,8 @@ serve(async (req) => {
       body: JSON.stringify({
         event: "test",
         source: "engagetech_researcher",
+        user_id: user_id || "test_user",
+        company_domain: "example.com",
       }),
     });
 
