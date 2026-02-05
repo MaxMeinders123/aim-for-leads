@@ -24,10 +24,7 @@ serve(async (req) => {
       user_id,
       company_domain,
       status,
-      error_message,
-      salesforce_campaign_id,
-      salesforce_account_id,
-      campaign_company_id
+      error_message
     } = body;
     const rawText = body.company || body[" company"] || body.text;
 
@@ -127,8 +124,6 @@ serve(async (req) => {
         evidence_urls: evidenceUrls,
         raw_data: company_data,
         error_message: error_message || null,
-        salesforce_campaign_id: salesforce_campaign_id || null,
-        salesforce_account_id: salesforce_account_id || null,
       })
       .select()
       .single();
@@ -142,18 +137,6 @@ serve(async (req) => {
     }
 
     console.log("[receive-company-results] Company research saved");
-
-    // Update campaign_companies table if this came from campaign import
-    if (campaign_company_id) {
-      await supabase
-        .from("campaign_companies")
-        .update({
-          status: 'completed',
-          company_research_id: insertedRecord.id
-        })
-        .eq("id", campaign_company_id);
-
-    }
 
     // Also update the legacy research_results table for backwards compatibility
     const { data: existingLegacy } = await supabase
