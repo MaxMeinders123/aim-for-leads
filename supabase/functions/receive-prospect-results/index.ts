@@ -168,7 +168,7 @@ serve(async (req) => {
       };
 
       // Add company_research_id if we have it
-      if (companyResearchId) {
+      if (companyResearchId && uuidRegex.test(companyResearchId)) {
         prospectInsert.company_research_id = companyResearchId;
       }
 
