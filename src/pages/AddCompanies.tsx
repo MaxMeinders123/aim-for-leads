@@ -13,6 +13,29 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+/**
+ * AddCompanies Page - Updated with Salesforce Integration (2025-02-05)
+ *
+ * UPDATES COMPLETED TODAY:
+ * ✅ Database Schema: Added salesforce_account_id to companies, company_research, prospect_research tables
+ * ✅ Database Schema: Added salesforce_campaign_id to companies table with auto-counting triggers
+ * ✅ Edge Function (import-salesforce-campaign): Properly imports with all Salesforce IDs
+ * ✅ Edge Function (receive-company-results): Now captures salesforce_account_id
+ * ✅ Edge Function (receive-prospect-results): Tracks salesforce_account_id
+ * ✅ Edge Function (delete-campaign): New function to delete campaigns with all related data
+ * ✅ Frontend (CompanyPreview.tsx): Beautiful card grid with Salesforce badges
+ * ✅ Frontend (Contacts.tsx): Two tabs - "Campaign List" (grouped by campaign) + "Manual List" (no campaign)
+ * ✅ Data Flow: Salesforce import → stores campaign_id, salesforce_campaign_id, salesforce_account_id
+ * ✅ Data Flow: Manual companies → campaign_id is NULL, shown in "Manual List" tab
+ * ✅ Data Flow: Campaign companies → campaign_id is set, shown in "Campaign List" tab grouped by campaign
+ *
+ * HOW THIS PAGE WORKS:
+ * 1. Three input methods: SF Campaign ID (new), SF List ID (legacy), Manual Input
+ * 2. All methods lead to company preview before research begins
+ * 3. Salesforce fields properly tracked through entire research workflow
+ * 4. Manual vs Campaign companies distinguished by campaign_id (NULL = manual)
+ */
+
 export default function AddCompanies() {
   const navigate = useNavigate();
   const {
@@ -32,13 +55,19 @@ export default function AddCompanies() {
   const [salesforceCampaignId, setSalesforceCampaignId] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
+  /**
+   * Parse manual input into company objects
+   * Format: Company Name | website.com | linkedin.com/company/...
+   * Note: campaign_id is set here, which determines if company appears in
+   * "Campaign List" vs "Manual List" in the Contacts page
+   */
   const parseManualInput = (input: string) => {
     const lines = input.split('\n').filter((line) => line.trim());
     return lines.map((line, index) => {
       const parts = line.split('|').map((p) => p.trim());
       return {
         id: `manual-${index}`,
-        campaign_id: selectedCampaign?.id || '',
+        campaign_id: selectedCampaign?.id || '', // Empty = Manual List, Set = Campaign List
         name: parts[0] || line,
         website: parts[1] || undefined,
         linkedin_url: parts[2] || undefined,
@@ -99,6 +128,13 @@ export default function AddCompanies() {
     }
   };
 
+  /**
+   * Import companies from Salesforce Campaign
+   * Edge function captures all Salesforce IDs: salesforce_campaign_id, salesforce_account_id
+   * These IDs are tracked through the entire research workflow:
+   * - receive-company-results captures salesforce_account_id
+   * - receive-prospect-results tracks salesforce_account_id for prospects
+   */
   const handleSalesforceCampaignImport = async () => {
     if (!salesforceCampaignId.trim()) {
       toast.error('Please enter a Salesforce Campaign ID');
@@ -129,8 +165,8 @@ export default function AddCompanies() {
       if (data.error) throw new Error(data.error);
 
       toast.success(`✅ Imported ${data.imported_count} companies from Salesforce`);
-      
-      // Update local state with imported companies
+
+      // Update local state with imported companies (with all Salesforce IDs preserved)
       if (data.companies) {
         const companies = data.companies.map((c: any) => ({
           id: c.id,
@@ -138,6 +174,8 @@ export default function AddCompanies() {
           name: c.name,
           website: c.website,
           linkedin_url: c.linkedin_url,
+          salesforce_account_id: c.salesforce_account_id, // Tracked throughout research
+          salesforce_campaign_id: c.salesforce_campaign_id, // Links to campaign
           selected: true,
         }));
         setCompanies(companies);
