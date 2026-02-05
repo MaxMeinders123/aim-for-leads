@@ -65,57 +65,41 @@ serve(async (req) => {
     }
 
     // Delete related data in order (due to foreign key constraints)
-    // 1. Delete prospect_research records
-    const { error: prospectResearchError } = await supabaseClient
-      .from('prospect_research')
-      .delete()
-      .eq('user_id', user.id)
-      .in('company_research_id',
-        supabaseClient
-          .from('company_research')
-          .select('id')
-          .eq('campaign_id', campaign_id)
-      );
+    // 1. Get company_research IDs first for nested deletes
+    const { data: companyResearchRecords } = await supabaseClient
+      .from('company_research')
+      .select('id')
+      .eq('campaign_id', campaign_id);
 
-    // 2. Delete company_research records
-    const { error: companyResearchError } = await supabaseClient
+    const companyResearchIds = companyResearchRecords?.map((r: { id: string }) => r.id) || [];
+
+    // 2. Delete prospect_research records linked to company_research
+    if (companyResearchIds.length > 0) {
+      await supabaseClient
+        .from('prospect_research')
+        .delete()
+        .in('company_research_id', companyResearchIds);
+    }
+
+    // 3. Delete company_research records
+    await supabaseClient
       .from('company_research')
       .delete()
-      .eq('campaign_id', campaign_id)
-      .eq('user_id', user.id);
+      .eq('campaign_id', campaign_id);
 
-    // 3. Delete contacts
-    const { error: contactsError } = await supabaseClient
+    // 4. Delete contacts
+    await supabaseClient
       .from('contacts')
       .delete()
       .eq('campaign_id', campaign_id);
 
-    // 4. Delete companies
-    const { error: companiesError } = await supabaseClient
+    // 5. Delete companies
+    await supabaseClient
       .from('companies')
       .delete()
-      .eq('campaign_id', campaign_id)
-      .eq('user_id', user.id);
+      .eq('campaign_id', campaign_id);
 
-    // 5. Delete campaign_companies
-    const { error: campaignCompaniesError } = await supabaseClient
-      .from('campaign_companies')
-      .delete()
-      .in('campaign_import_id',
-        supabaseClient
-          .from('campaign_imports')
-          .select('id')
-          .eq('campaign_id', campaign_id)
-      );
-
-    // 6. Delete campaign_imports
-    const { error: campaignImportsError } = await supabaseClient
-      .from('campaign_imports')
-      .delete()
-      .eq('campaign_id', campaign_id)
-      .eq('user_id', user.id);
-
-    // 7. Finally, delete the campaign itself
+    // 6. Finally, delete the campaign itself
     const { error: deleteCampaignError } = await supabaseClient
       .from('campaigns')
       .delete()
@@ -138,8 +122,9 @@ serve(async (req) => {
       }
     );
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error in delete-campaign function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     });
