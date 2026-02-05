@@ -71,7 +71,7 @@ export interface CampaignDraft {
 export interface CompanyResearchResult {
   status: string;
   company: string;
-  company_status: 'Operating' | 'Acquired' | 'Bankrupt' | 'Not_Found';
+  company_status: 'Operating' | 'Acquired' | 'Renamed' | 'Bankrupt' | 'Not_Found';
   acquiredBy?: string;
   effectiveDate?: string;
   cloud_preference?: {

@@ -95,27 +95,62 @@ export default function Contacts() {
 
       if (prospectError) throw prospectError;
 
-      // Group prospects by company
-      const prospectsByCompany = (prospects || []).reduce((acc, prospect) => {
-        if (!acc[prospect.company_research_id]) {
-          acc[prospect.company_research_id] = [];
+      // Group company research records by domain (to handle duplicates)
+      const companyByDomain = companyResearch.reduce((acc, cr) => {
+        const domain = cr.company_domain.toLowerCase();
+        // Keep only the most recent research for each domain
+        if (!acc[domain] || new Date(cr.created_at) > new Date(acc[domain].created_at)) {
+          acc[domain] = cr;
         }
-        acc[prospect.company_research_id].push(prospect);
+        return acc;
+      }, {} as Record<string, typeof companyResearch[0]>);
+
+      // Get all company_research IDs for the same domain (to merge prospects)
+      const domainToIds = companyResearch.reduce((acc, cr) => {
+        const domain = cr.company_domain.toLowerCase();
+        if (!acc[domain]) {
+          acc[domain] = [];
+        }
+        acc[domain].push(cr.id);
+        return acc;
+      }, {} as Record<string, string[]>);
+
+      // Group prospects by company domain (merging all prospects for the same company)
+      const prospectsByDomain = (prospects || []).reduce((acc, prospect) => {
+        const companyRec = companyResearch.find(cr => cr.id === prospect.company_research_id);
+        if (companyRec) {
+          const domain = companyRec.company_domain.toLowerCase();
+          if (!acc[domain]) {
+            acc[domain] = [];
+          }
+          // Only add if not already present (avoid duplicates within merged prospects)
+          const isDuplicate = acc[domain].some(p =>
+            p.first_name === prospect.first_name &&
+            p.last_name === prospect.last_name &&
+            p.linkedin_url === prospect.linkedin_url
+          );
+          if (!isDuplicate) {
+            acc[domain].push(prospect);
+          }
+        }
         return acc;
       }, {} as Record<string, ProspectResearch[]>);
 
-      // Build the combined data structure
-      const companiesWithProspects: CompanyWithProspects[] = companyResearch.map((cr) => ({
-        company: {
-          id: cr.id,
-          name: cr.company_name || cr.company_domain,
-          website: cr.company_domain,
-          linkedin_url: null,
-          salesforce_account_id: null,
-        },
-        prospects: prospectsByCompany[cr.id] || [],
-        researchStatus: cr.status,
-      }));
+      // Build the combined data structure from unique domains
+      const companiesWithProspects: CompanyWithProspects[] = Object.values(companyByDomain).map((cr) => {
+        const domain = cr.company_domain.toLowerCase();
+        return {
+          company: {
+            id: cr.id,
+            name: cr.company_name || cr.company_domain,
+            website: cr.company_domain,
+            linkedin_url: null,
+            salesforce_account_id: null,
+          },
+          prospects: prospectsByDomain[domain] || [],
+          researchStatus: cr.status,
+        };
+      });
 
       setCompanies(companiesWithProspects);
     } catch (error: any) {

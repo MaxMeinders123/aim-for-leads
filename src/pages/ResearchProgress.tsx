@@ -408,6 +408,30 @@ export default function ResearchProgress() {
         parsedCompanyData = companyData ? parseAIResponse(companyData) as CompanyResearchResult : null;
         console.log(`[Research] Company data parsed:`, parsedCompanyData ? 'success' : 'null');
 
+        // Check if the AI returned an error status - but Acquired/Renamed/Not_Found are valid research results
+        if (parsedCompanyData?.status === 'error' && !parsedCompanyData?.company_status) {
+          // Only treat as error if there's no company_status (real error, not just acquired/renamed)
+          console.error(`[Research] AI returned error for ${company.name}`);
+          updateCompanyProgress(company.id, {
+            step: 'error',
+            error: 'Research failed - unable to gather company information',
+          });
+          toast.error(`Research failed for ${company.name}`);
+          continue; // Skip to next company
+        }
+
+        // For Acquired, Renamed, Bankrupt, or Not_Found companies, we still have valid data
+        // Show a special toast to inform the user
+        if (parsedCompanyData?.company_status === 'Acquired' && parsedCompanyData.acquiredBy) {
+          toast.info(`${company.name} has been acquired by ${parsedCompanyData.acquiredBy}`);
+        } else if (parsedCompanyData?.company_status === 'Renamed' && parsedCompanyData.acquiredBy) {
+          toast.info(`${company.name} has been renamed to ${parsedCompanyData.acquiredBy}`);
+        } else if (parsedCompanyData?.company_status === 'Bankrupt') {
+          toast.warning(`${company.name} is no longer operating (Bankrupt)`);
+        } else if (parsedCompanyData?.company_status === 'Not_Found') {
+          toast.warning(`${company.name} could not be found or verified`);
+        }
+
         // Update state with company data BEFORE moving to people step
         updateCompanyProgress(company.id, {
           step: 'people',
