@@ -24,6 +24,7 @@ serve(async (req) => {
       user_id,
       company_domain,
       campaign_id,
+      salesforce_account_id,
       status,
       error_message
     } = body;
@@ -117,6 +118,7 @@ serve(async (req) => {
         user_id,
         company_domain,
         campaign_id: campaign_id || null,
+        salesforce_account_id: salesforce_account_id || null,
         company_name: companyName,
         status: status === "rejected" ? "failed" : "completed",
         company_status: companyStatus,
