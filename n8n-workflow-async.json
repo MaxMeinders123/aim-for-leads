@@ -5,20 +5,20 @@
       "parameters": {
         "modelId": {
           "__rl": true,
-          "value": "gpt-5.2",
+          "value": "gpt-4o-mini",
           "mode": "list",
-          "cachedResultName": "GPT-5.2"
+          "cachedResultName": "GPT-4o-mini"
         },
         "responses": {
           "values": [
             {
-              "content": "=SYSTEM ROLE\n\nYou are a world-class B2B Research Agent. Your goal is to validate the company status for {{ $json.body.company.name }} for the campaign {{ $json.body.campaign.campaignName }}.\n\nCAMPAIGN CONTEXT\n\nProduct:\n\nCategory: {{ $json.body.campaign.product }},{{ $json.body.campaign.primaryAngle }},{{ $json.body.campaign.secondaryAngle }}\n\nFocus Region: {{ $json.body.campaign.targetRegion }}\n\nCore Strategy:\n\nPain Points: {{ $json.body.campaign.painPoints[0] }}, {{ $json.body.campaign.painPoints[1] }}, {{ $json.body.campaign.painPoints[2] }}\n\nCRITICAL VALIDATION RULES\n\nACQUIRED / RENAMED / MERGED:\n\nSet \"company_status\": \"Acquired\" (or Renamed)\n\nInclude \"acquiredBy\": \"Parent Company Name\"\n\nInclude \"effectiveDate\": \"Year\"\n\nBANKRUPT / DEFUNCT:\n\nSet \"company_status\": \"Bankrupt\"\n\nNOT FOUND / UNVERIFIABLE:\n\nSet \"company_status\": \"Not_Found\"\n\nOPERATING:\n\nSet \"company_status\": \"Operating\"\n\nRESEARCH SOURCES PRIORITY\n\nPrimary: LinkedIn company page\n\nSecondary: Company website, leadership/about pages, vendor mentions\n\nTertiary: News, press releases, technical blogs\n\nConflict Resolution: If sources conflict, prioritize LinkedIn > Website > Other.\n\nOUTPUT REQUIREMENTS\n\nReturn ONLY a valid JSON object. No prose. No markdown links. Plain text URLs only. Escape quotes in strings. No trailing commas. Output the JSON code block only.\n\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"company_status\": \"Operating|Acquired|Bankrupt|Not_Found\",\n  \"acquiredBy\": \"Parent Co (if acquired/renamed)\",\n  \"effectiveDate\": \"YYYY\",\n  \"cloud_preference\": { \"provider\": \"AWS|Azure|GCP|Unknown\", \"confidence\": 0-100, \"evidence_urls\": [] }\n}\n\n\nINPUT FORMAT: Company: {{ $json.body.company.name }} website {{ $json.body.company.website }} linkedin {{ $json.body.company.linkedin }}\n\nCOMPANY TO RESEARCH: {{ $json.body.company.name }} (Website: {{ $json.body.company.website }}) (LinkedIn:{{ $json.body.company.linkedin }} )"
+              "content": "Validate company status for {{ $json.body.company.name }}.\n\nClassify as: Operating, Acquired, Bankrupt, or Not_Found\n\nReturn ONLY valid JSON:\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"company_status\": \"Operating|Acquired|Bankrupt|Not_Found\",\n  \"acquiredBy\": \"parent company name if applicable\",\n  \"effectiveDate\": \"YYYY if applicable\",\n  \"notes\": \"brief findings\"\n}\n\nCompany: {{ $json.body.company.name }}\nWebsite: {{ $json.body.company.website }}\nLinkedIn: {{ $json.body.company.linkedin }}"
             }
           ]
         },
         "builtInTools": {
           "webSearch": {
-            "searchContextSize": "medium"
+            "searchContextSize": "low"
           }
         },
         "options": {}
@@ -42,14 +42,14 @@
       "parameters": {
         "modelId": {
           "__rl": true,
-          "value": "gpt-5.2",
+          "value": "gpt-4o-mini",
           "mode": "list",
-          "cachedResultName": "GPT-5.2"
+          "cachedResultName": "GPT-4o-mini"
         },
         "responses": {
           "values": [
             {
-              "content": "=SYSTEM ROLE\n\nYou are a world-class B2B Research Agent. Your goal is to find the \"Ideal Technical Buyers\" for {{ $json.body.campaign.campaignName }} at {{ $json.body.company.name }}.\n\nCAMPAIGN CONTEXT\n\nProduct:\n\nCategory: {{ $json.body.campaign.product }},{{ $json.body.campaign.primaryAngle }},{{ $json.body.campaign.secondaryAngle }}\n\nFocus Region: {{ $json.body.campaign.targetRegion }}\n\nCore Strategy:\n\nPain Points: {{ $json.body.campaign.painPoints[0] }}, {{ $json.body.campaign.painPoints[1] }}, {{ $json.body.campaign.painPoints[2] }}\n\nQUALIFICATION CRITERIA\n\nEach prospect must have:\n\nCurrent Employment: Must be currently employed at {{ $json.body.company.name }}\n\nDecision Authority: Ownership of network infrastructure, security architecture, application delivery, CDN, DDoS protection, or cloud platforms.\n\nDomain Alignment: Role must align with {{ $json.body.campaign.product }}/ {{ $json.body.campaign.productCategory }}\n\nSeniority: Director-level or above (Manager acceptable ONLY if they are the most senior relevant technical role).\n\nEXCLUDE: IT Support, Helpdesk, Junior Engineers, Trainees, Interns, generic Specialists without decision authority.\n\nRESEARCH METHODOLOGY (STRICT RULES)\n\nContact Count: Find exactly 3 to 7 perfect-fit contacts per company. Never return more than 7. Quality over quantity.\n\nPersona Weighting (80/20 Rule):\n\n80% Technical Owners: Find people who actually work with the tech (NOC, Infrastructure, DevOps, Cloud Architect, IT Ops).\n\n20% Strategic Owners: Find executive decision-makers (CTO, VP Eng) ONLY if they show a technical background.\n\nProhibited Roles: Do not include CEOs, CFOs, or HR unless they are explicitly technical acting-CTOs.\n\nLinkedIn Verification (CRITICAL):\n\nThe assistant must verify and provide actual LinkedIn URLs through direct search.\n\nSearch LinkedIn for \"[Person Name] [Company Name]\" to find their profile.\n\nCopy the actual LinkedIn URL from the search results or profile page.\n\nIf you cannot access LinkedIn directly: Explicitly state \"LinkedIn profile not publicly accessible\" in keys if blocked.\n\nNever guess: Do not construct or extrapolate URLs from name patterns.\n\nNo placeholders: Never return hypothetical URLs.\n\nValid pattern: linkedin.com/in/[profile-slug].\n\nResearch Sources Priority:\n\nPrimary: LinkedIn individual profiles & company pages (People tab).\n\nSecondary: Company website (Leadership/IT pages), Cloudflare/Vendor mentions.\n\nTertiary: News, press releases, technical blogs.\n\nConflict Resolution: If sources conflict, prioritize LinkedIn > Website > Other.\n\nData Hygiene:\n\nTitle Case Only: Format names like \"John Smith\".\n\nClean Titles: Strip \"CEO Etc\" or instruction fluff. Use the real, current job title.\n\nRegional Verify: Ensure the contact has authority for the {{ $json.body.campaign.targetRegion }} market.\n\nOUTPUT REQUIREMENTS\n\nReturn ONLY a valid JSON object. No prose. No markdown links. Plain text URLs only. Include exactly 3 to 7 contacts in the \"contacts\" array. Every contact must have a valid \"linkedin\" URL (e.g. linkedin.com/in/slug). Escape quotes in strings. No trailing commas. Output the JSON code block only.\n\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"contacts\": [\n    {\n      \"first_name\": \"...\",\n      \"last_name\": \"...\",\n      \"job_title\": \"Actual Title\",\n      \"title\": \"Security|AI|FinOps|Modernization\",\n      \"pitch_type\": \"Security|AI|FinOps|Modernization\",\n      \"linkedin\": \"linkedin.com/in/profile-slug\",\n      \"priority\": \"High|Medium|Low\",\n      \"priority_reason\": \"Matched for {{ $json.body.campaign.primaryAngle }} because they manage [Specific Tech Found]\"\n    }\n  ]\n}\n\n\nCOMPANY TO RESEARCH: {{ $json.body.company.name }} (Website: {{ $json.body.company.website }}) (LinkedIn:{{ $json.body.company.linkedin }} )"
+              "content": "Find 3-7 technical decision-makers at {{ $json.body.company.name }} for {{ $json.body.campaign.product }}.\n\nRoles: Director+ in infrastructure, cloud, DevOps, security, or IT operations.\nExclude: Support staff, junior roles, HR, CFOs.\n\nReturn ONLY valid JSON:\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"contacts\": [\n    {\n      \"first_name\": \"First\",\n      \"last_name\": \"Last\",\n      \"job_title\": \"Real job title\",\n      \"linkedin\": \"linkedin.com/in/profile-slug\",\n      \"priority\": \"High|Medium|Low\",\n      \"priority_reason\": \"Brief reason for match\"\n    }\n  ]\n}\n\nCompany: {{ $json.body.company.name }}\nWebsite: {{ $json.body.company.website }}\nLinkedIn: {{ $json.body.company.linkedin }}"
             }
           ]
         },
