@@ -2,3 +2,6 @@ project_id = "lqrkrzikjlavnltbnnoa"
 
 [functions.delete-campaign]
 verify_jwt = false
+
+[functions.import-salesforce-campaign]
+verify_jwt = false
