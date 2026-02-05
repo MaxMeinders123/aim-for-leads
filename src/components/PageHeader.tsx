@@ -2,6 +2,7 @@ import { ReactNode, forwardRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 
 interface PageHeaderProps {
   title: string;
@@ -26,6 +27,7 @@ export const PageHeader = forwardRef<HTMLDivElement, PageHeaderProps>(
     return (
       <div ref={ref} className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-3">
+          <SidebarTrigger className="md:hidden" />
           {(backTo || onBack) && (
             <Button
               variant="ghost"
