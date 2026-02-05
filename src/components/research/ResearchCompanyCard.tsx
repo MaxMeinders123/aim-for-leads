@@ -22,18 +22,20 @@ const researchSteps = [
 // Loading skeleton for company data
 function CompanyDataSkeleton() {
   return (
-    <div className="space-y-2">
-      <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-        <Building2 className="w-4 h-4" />
-        <span className="flex items-center gap-2">
-          Researching company...
-          <Loader2 className="w-3 h-3 animate-spin" />
-        </span>
-      </h4>
-      <div className="bg-background rounded-lg p-3 space-y-3">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-4 w-40" />
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Building2 className="w-4 h-4 text-primary" />
+        </div>
+        <h4 className="text-base font-semibold text-foreground flex items-center gap-2">
+          Researching company
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+        </h4>
+      </div>
+      <div className="bg-background rounded-xl p-4 shadow-sm space-y-3 border">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-5 w-56" />
+        <Skeleton className="h-5 w-48" />
       </div>
     </div>
   );
@@ -42,23 +44,25 @@ function CompanyDataSkeleton() {
 // Loading skeleton for people data
 function PeopleDataSkeleton() {
   return (
-    <div className="space-y-2">
-      <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-        <Users className="w-4 h-4" />
-        <span className="flex items-center gap-2">
-          Finding contacts...
-          <Loader2 className="w-3 h-3 animate-spin" />
-        </span>
-      </h4>
-      <div className="space-y-2">
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Users className="w-4 h-4 text-primary" />
+        </div>
+        <h4 className="text-base font-semibold text-foreground flex items-center gap-2">
+          Finding contacts
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+        </h4>
+      </div>
+      <div className="grid gap-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-background rounded-lg p-3 space-y-2">
+          <div key={i} className="bg-background rounded-xl p-4 border shadow-sm space-y-3">
             <div className="flex items-center gap-2">
-              <Skeleton className="h-4 w-28" />
-              <Skeleton className="h-5 w-14 rounded-full" />
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-5 w-16 rounded-full" />
             </div>
-            <Skeleton className="h-3 w-36" />
-            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-4 w-full" />
           </div>
         ))}
       </div>
@@ -91,14 +95,15 @@ export function ResearchCompanyCard({
 
   const getCompanyStatusBadge = () => {
     if (!companyData?.company_status) return null;
-    
+
     const statusColors: Record<string, string> = {
       'Operating': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
       'Acquired': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+      'Renamed': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
       'Bankrupt': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
       'Not_Found': 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400',
     };
-    
+
     return (
       <Badge className={cn('text-xs', statusColors[companyData.company_status] || 'bg-muted')}>
         {companyData.company_status}
@@ -116,165 +121,157 @@ export function ResearchCompanyCard({
   };
 
   const getCurrentStepLabel = () => {
-    if (isLoadingCompany) return 'Researching company status...';
-    if (isLoadingPeople) return 'Finding decision makers...';
-    if (isAwaitingCallback) return 'Processing contacts (waiting for results)...';
+    if (isLoadingCompany) return 'Researching company';
+    if (isLoadingPeople) return 'Finding contacts';
+    if (isAwaitingCallback) return 'Processing results';
     return null;
   };
 
   return (
-    <div className={cn('rounded-xl border-2 transition-all', getStatusColor())}>
-      {/* Header */}
+    <div className={cn('rounded-xl border-2 transition-all shadow-sm hover:shadow-md', getStatusColor())}>
+      {/* Header - Clean and minimal */}
       <button
         onClick={onToggleExpand}
-        className="w-full p-4 flex items-center justify-between text-left"
+        className="w-full p-5 flex items-center justify-between text-left hover:bg-muted/30 transition-colors rounded-xl"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
           {step === 'error' ? (
-            <AlertCircle className="w-5 h-5 text-destructive" />
+            <div className="shrink-0 w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+            </div>
           ) : step === 'complete' ? (
-            <Check className="w-5 h-5 text-green-600" />
+            <div className="shrink-0 w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+              <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+            </div>
           ) : (
-            <Loader2 className="w-5 h-5 text-primary animate-spin" />
+            <div className="shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Loader2 className="w-5 h-5 text-primary animate-spin" />
+            </div>
           )}
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-foreground">{companyName}</span>
-              {getCompanyStatusBadge()}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-semibold text-lg text-foreground truncate">{companyName}</span>
             </div>
             {isProcessing && (
-              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                <span className="inline-block w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse" />
                 {getCurrentStepLabel()}
               </p>
             )}
+            {step === 'complete' && !isExpanded && peopleData?.contacts && (
+              <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                ✓ {peopleData.contacts.length} contact{peopleData.contacts.length !== 1 ? 's' : ''} found
+              </p>
+            )}
             {error && (
-              <p className="text-xs text-destructive mt-1">{error}</p>
+              <p className="text-sm text-destructive font-medium mt-1">⚠ {error}</p>
             )}
           </div>
         </div>
-        
-        <div className="flex items-center gap-4">
-          {/* Step indicators */}
-          <div className="flex gap-1">
-            {researchSteps.map((s) => {
-              const status = getStepStatus(s.id, step);
-              return (
-                <div
-                  key={s.id}
-                  className={cn(
-                    'w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all',
-                    status === 'completed' && 'bg-green-500 text-white',
-                    status === 'current' && 'bg-primary text-primary-foreground ring-2 ring-primary/30 ring-offset-1',
-                    status === 'pending' && 'bg-muted text-muted-foreground',
-                    status === 'error' && 'bg-destructive text-destructive-foreground'
-                  )}
-                >
-                  {status === 'completed' ? (
-                    <Check className="w-3 h-3" />
-                  ) : status === 'current' ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <s.icon className="w-3 h-3" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          
+
+        <div className="flex items-center gap-3 shrink-0">
           {(companyData || peopleData || isProcessing) && (
-            isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />
+            isExpanded ? (
+              <ChevronUp className="w-5 h-5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-muted-foreground" />
+            )
           )}
         </div>
       </button>
 
       {/* Expanded Content - show during loading or when data exists */}
       {isExpanded && (companyData || peopleData || isProcessing) && (
-        <div className="px-4 pb-4 space-y-4 border-t border-border/50 pt-4">
+        <div className="px-6 pb-6 space-y-6 border-t border-border/50 pt-6 bg-muted/20">
           {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2">
-            {onRetryStep && !isProcessing && (
-              <>
+          {(onRetryStep || onPushToContacts) && (
+            <div className="flex flex-wrap gap-2">
+              {onPushToContacts && (step === 'complete' || (peopleData?.contacts && peopleData.contacts.length > 0)) && (
                 <Button
-                  variant="outline"
                   size="sm"
-                  onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'company'); }}
-                  className="text-xs"
+                  onClick={(e) => { e.stopPropagation(); onPushToContacts(companyId, companyName); }}
+                  className="shadow-sm"
                 >
-                  <RotateCcw className="w-3 h-3 mr-1" />
-                  Retry Company
+                  <Upload className="w-4 h-4 mr-2" />
+                  Push to Contacts
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'people'); }}
-                  className="text-xs"
-                >
-                  <RotateCcw className="w-3 h-3 mr-1" />
-                  Retry People
-                </Button>
-              </>
-            )}
-            {onPushToContacts && (step === 'complete' || (peopleData?.contacts && peopleData.contacts.length > 0)) && (
-              <Button
-                size="sm"
-                onClick={(e) => { e.stopPropagation(); onPushToContacts(companyId, companyName); }}
-                className="text-xs"
-              >
-                <Upload className="w-3 h-3 mr-1" />
-                Push to Contacts
-              </Button>
-            )}
-          </div>
+              )}
+              {onRetryStep && !isProcessing && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'company'); }}
+                    className="shadow-sm"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Retry Company
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); onRetryStep(companyId, 'people'); }}
+                    className="shadow-sm"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Retry People
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Company Data or Loading Skeleton */}
           {isLoadingCompany && <CompanyDataSkeleton />}
           {companyData && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                <Building2 className="w-4 h-4" />
-                Company Research
-                <Check className="w-3 h-3 text-green-500" />
-              </h4>
-              <div className="bg-background rounded-lg p-3 space-y-2">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Building2 className="w-4 h-4 text-primary" />
+                </div>
+                <h4 className="text-base font-semibold text-foreground">Company Information</h4>
+                <Check className="w-4 h-4 text-green-500 ml-auto" />
+              </div>
+              <div className="bg-background rounded-xl p-4 shadow-sm space-y-3 border">
                 {companyData.company_status && (
-                  <p className="text-sm">
-                    <span className="text-muted-foreground">Status:</span>{' '}
-                    <span className="font-medium">{companyData.company_status}</span>
-                  </p>
-                )}
-                {companyData.acquiredBy && (
-                  <p className="text-sm">
-                    <span className="text-muted-foreground">Acquired by:</span>{' '}
-                    <span className="font-medium">{companyData.acquiredBy}</span>
-                    {companyData.effectiveDate && ` (${companyData.effectiveDate})`}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground min-w-[100px]">Status</span>
+                    <div className="flex items-center gap-2">
+                      {getCompanyStatusBadge()}
+                      {companyData.acquiredBy && (
+                        <span className="text-sm">
+                          → <span className="font-medium">{companyData.acquiredBy}</span>
+                          {companyData.effectiveDate && <span className="text-muted-foreground ml-1">({companyData.effectiveDate})</span>}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 )}
                 {companyData.cloud_preference && (
-                  <div className="flex items-center gap-2">
-                    <Cloud className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">
-                      <span className="font-medium">{companyData.cloud_preference.provider}</span>
-                      <span className="text-muted-foreground ml-2">
-                        ({companyData.cloud_preference.confidence}% confidence)
-                      </span>
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground min-w-[100px]">Cloud Provider</span>
+                    <div className="flex items-center gap-2">
+                      <Cloud className="w-4 h-4 text-primary" />
+                      <span className="font-medium text-sm">{companyData.cloud_preference.provider}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {companyData.cloud_preference.confidence}% confidence
+                      </Badge>
+                    </div>
                   </div>
                 )}
                 {companyData.cloud_preference?.evidence_urls && companyData.cloud_preference.evidence_urls.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-xs text-muted-foreground mb-1">Evidence:</p>
-                    <div className="flex flex-wrap gap-1">
+                  <div className="pt-2 border-t">
+                    <div className="flex flex-wrap gap-2">
                       {companyData.cloud_preference.evidence_urls.slice(0, 3).map((url, i) => (
                         <a
                           key={i}
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                          className="text-xs text-primary hover:underline flex items-center gap-1 bg-primary/5 px-2 py-1 rounded-md hover:bg-primary/10 transition-colors"
                         >
-                          Source {i + 1}
                           <ExternalLink className="w-3 h-3" />
+                          Source {i + 1}
                         </a>
                       ))}
                     </div>
@@ -287,35 +284,41 @@ export function ResearchCompanyCard({
           {/* People Data or Loading Skeleton */}
           {(isLoadingPeople || isAwaitingCallback) && <PeopleDataSkeleton />}
           {peopleData?.contacts && peopleData.contacts.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Contacts Found ({peopleData.contacts.length})
-                <Check className="w-3 h-3 text-green-500" />
-              </h4>
-              <div className="space-y-2">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-green-600 dark:text-green-400" />
+                </div>
+                <h4 className="text-base font-semibold text-foreground">
+                  {peopleData.contacts.length} Contact{peopleData.contacts.length !== 1 ? 's' : ''} Found
+                </h4>
+                <Check className="w-4 h-4 text-green-500 ml-auto" />
+              </div>
+              <div className="grid gap-3">
                 {peopleData.contacts.map((contact: ResearchContact, index: number) => (
-                  <div 
-                    key={index} 
-                    className="bg-background rounded-lg p-3 flex items-start justify-between gap-4"
+                  <div
+                    key={index}
+                    className="bg-background rounded-xl p-4 flex items-start justify-between gap-4 border shadow-sm hover:shadow-md transition-shadow"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">
+                      <div className="flex items-center gap-2 flex-wrap mb-2">
+                        <span className="font-semibold text-base">
                           {contact.first_name} {contact.last_name}
                         </span>
-                        <Badge className={cn('text-xs', getPriorityColor(contact.priority))}>
+                        <Badge className={cn('text-xs font-medium', getPriorityColor(contact.priority))}>
                           {contact.priority}
                         </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {contact.pitch_type}
-                        </Badge>
+                        {contact.pitch_type && (
+                          <Badge variant="secondary" className="text-xs">
+                            {contact.pitch_type}
+                          </Badge>
+                        )}
                       </div>
-                      <p className="text-sm text-muted-foreground mt-0.5">
+                      <p className="text-sm text-muted-foreground font-medium mb-2">
                         {contact.job_title}
                       </p>
                       {contact.priority_reason && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 bg-muted/50 p-2 rounded-lg">
                           {contact.priority_reason}
                         </p>
                       )}
@@ -325,9 +328,10 @@ export function ResearchCompanyCard({
                         href={`https://${contact.linkedin}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary hover:text-primary/80 shrink-0"
+                        className="shrink-0 p-2 rounded-lg hover:bg-primary/10 transition-colors"
+                        title="View LinkedIn Profile"
                       >
-                        <ExternalLink className="w-4 h-4" />
+                        <ExternalLink className="w-5 h-5 text-primary" />
                       </a>
                     )}
                   </div>
