@@ -14,6 +14,7 @@ import ResearchProgress from "./pages/ResearchProgress";
 import Contacts from "./pages/Contacts";
 import Settings from "./pages/Settings";
 import ResearchSystem from "./pages/ResearchSystem";
+import ImportSalesforceProspects from "./pages/ImportSalesforceProspects";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,7 +24,6 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check initial session immediately
     const initSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -34,7 +34,6 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
           email: session.user.email || '',
         });
 
-        // Load integrations in background (don't block)
         supabase
           .from('user_integrations')
           .select('*')
@@ -59,7 +58,6 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
 
     initSession();
 
-    // Set up auth state listener for subsequent changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
@@ -178,6 +176,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ResearchSystem />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/import-salesforce-prospects"
+              element={
+                <ProtectedRoute>
+                  <ImportSalesforceProspects />
                 </ProtectedRoute>
               }
             />
