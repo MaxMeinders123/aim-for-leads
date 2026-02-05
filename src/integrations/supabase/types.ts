@@ -138,6 +138,7 @@ export type Database = {
           evidence_urls: string[] | null
           id: string
           raw_data: Json | null
+          salesforce_account_id: string | null
           status: string
           updated_at: string
           user_id: string
@@ -155,6 +156,7 @@ export type Database = {
           evidence_urls?: string[] | null
           id?: string
           raw_data?: Json | null
+          salesforce_account_id?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -172,6 +174,7 @@ export type Database = {
           evidence_urls?: string[] | null
           id?: string
           raw_data?: Json | null
+          salesforce_account_id?: string | null
           status?: string
           updated_at?: string
           user_id?: string

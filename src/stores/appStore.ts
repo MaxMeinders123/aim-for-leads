@@ -24,6 +24,8 @@ export interface Company {
   name: string;
   website?: string;
   linkedin_url?: string;
+  salesforce_account_id?: string;
+  salesforce_campaign_id?: string;
   selected?: boolean;
 }
 
