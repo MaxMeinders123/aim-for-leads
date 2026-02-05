@@ -22,20 +22,34 @@ serve(async (req) => {
     const { salesforce_campaign_id, campaign_id, user_id } = body;
 
     if (!salesforce_campaign_id || !campaign_id || !user_id) {
+      console.error("[import-salesforce-campaign] Missing required fields:", { salesforce_campaign_id, campaign_id, user_id });
       return new Response(
-        JSON.stringify({ error: "salesforce_campaign_id, campaign_id, and user_id are required" }),
+        JSON.stringify({
+          error: "salesforce_campaign_id, campaign_id, and user_id are required",
+          details: { salesforce_campaign_id: !!salesforce_campaign_id, campaign_id: !!campaign_id, user_id: !!user_id }
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Get Salesforce import webhook URL from user_integrations
-    const { data: integrationData } = await supabase
+    console.log("[import-salesforce-campaign] Fetching webhook URL for user:", user_id);
+    const { data: integrationData, error: integrationError } = await supabase
       .from("user_integrations")
       .select("salesforce_import_webhook_url")
       .eq("user_id", user_id)
       .maybeSingle();
 
+    if (integrationError) {
+      console.error("[import-salesforce-campaign] Integration fetch error:", integrationError);
+      return new Response(
+        JSON.stringify({ error: `Database error: ${integrationError.message}` }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!integrationData?.salesforce_import_webhook_url) {
+      console.error("[import-salesforce-campaign] Webhook URL not configured");
       return new Response(
         JSON.stringify({ error: "Salesforce import webhook URL not configured. Please add it in Settings." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -45,20 +59,35 @@ serve(async (req) => {
     console.log("[import-salesforce-campaign] Calling n8n webhook:", integrationData.salesforce_import_webhook_url);
 
     // Call n8n webhook to get accounts from Salesforce
-    const n8nResponse = await fetch(integrationData.salesforce_import_webhook_url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        salesforce_campaign_id,
-        user_id,
-      }),
-    });
+    let n8nResponse;
+    try {
+      n8nResponse = await fetch(integrationData.salesforce_import_webhook_url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          salesforce_campaign_id,
+          user_id,
+        }),
+      });
+    } catch (fetchError: any) {
+      console.error("[import-salesforce-campaign] Fetch error:", fetchError);
+      return new Response(
+        JSON.stringify({ error: `Failed to reach n8n webhook: ${fetchError.message}` }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("[import-salesforce-campaign] n8n response status:", n8nResponse.status);
 
     if (!n8nResponse.ok) {
       const errorText = await n8nResponse.text();
-      console.error("[import-salesforce-campaign] n8n error:", errorText);
+      console.error("[import-salesforce-campaign] n8n error response:", errorText);
       return new Response(
-        JSON.stringify({ error: `Salesforce import failed: ${errorText}` }),
+        JSON.stringify({
+          error: `n8n webhook returned ${n8nResponse.status}`,
+          details: errorText,
+          webhook_url: integrationData.salesforce_import_webhook_url
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -92,6 +121,7 @@ serve(async (req) => {
     }));
 
     console.log("[import-salesforce-campaign] Inserting companies:", companiesToInsert.length);
+    console.log("[import-salesforce-campaign] Sample company:", JSON.stringify(companiesToInsert[0], null, 2));
 
     const { data: insertedCompanies, error: insertError } = await supabase
       .from("companies")
@@ -101,7 +131,12 @@ serve(async (req) => {
     if (insertError) {
       console.error("[import-salesforce-campaign] Insert error:", insertError);
       return new Response(
-        JSON.stringify({ error: insertError.message }),
+        JSON.stringify({
+          error: "Database insert failed",
+          details: insertError.message,
+          hint: insertError.hint,
+          code: insertError.code
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
