@@ -314,7 +314,7 @@ export default function AddCompanies() {
                   id="manualInput"
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
-                  placeholder={`Company Name\nCompany | website.com\nCompany | site.com | linkedin.com/company/...`}
+                  placeholder={`Apple | apple.com | linkedin.com/company/apple\nGoogle | google.com | linkedin.com/company/google\nMicrosoft | microsoft.com | linkedin.com/company/microsoft\nTesla\nStripe | stripe.com`}
                   className="min-h-[200px] rounded-xl resize-none font-mono text-sm"
                 />
                 <p className="text-xs text-muted-foreground">
