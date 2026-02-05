@@ -17,7 +17,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    console.log("[update-prospect-salesforce] Payload:", JSON.stringify(body, null, 2));
+    console.log("[update-prospect-salesforce] Request received");
 
     const {
       prospect_id,
@@ -42,6 +42,23 @@ serve(async (req) => {
       );
     }
 
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(prospect_id)) {
+      return new Response(
+        JSON.stringify({ error: "prospect_id must be a valid UUID" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate salesforce_contact_id length
+    if (salesforce_contact_id.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "salesforce_contact_id is too long" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Update prospect_research table with Salesforce contact info
     const { data: updatedProspect, error: updateError } = await supabase
       .from("prospect_research")
@@ -57,7 +74,6 @@ serve(async (req) => {
       .single();
 
     if (updateError) {
-      console.error("[update-prospect-salesforce] Update error:", updateError);
       return new Response(
         JSON.stringify({
           error: "Failed to update prospect",
@@ -67,7 +83,7 @@ serve(async (req) => {
       );
     }
 
-    console.log("[update-prospect-salesforce] Successfully updated prospect:", prospect_id);
+    console.log("[update-prospect-salesforce] Prospect updated");
 
     return new Response(
       JSON.stringify({

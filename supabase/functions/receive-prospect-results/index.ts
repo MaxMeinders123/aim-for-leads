@@ -17,7 +17,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    console.log("[receive-prospect-results] Payload:", JSON.stringify(body, null, 2));
+    console.log("[receive-prospect-results] Request received");
 
     const {
       user_id,
@@ -52,12 +52,34 @@ serve(async (req) => {
     };
 
     const prospect_data = parseTextToJson(rawText);
-    console.log("[receive-prospect-results] Parsed prospect_data:", prospect_data);
 
     // Validate required fields
     if (!user_id || typeof user_id !== 'string') {
       return new Response(
         JSON.stringify({ error: "user_id is required and must be a string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate user_id format (should be UUID)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(user_id)) {
+      return new Response(
+        JSON.stringify({ error: "user_id must be a valid UUID" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify user exists in profiles table
+    const { data: userExists, error: userError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    if (userError || !userExists) {
+      return new Response(
+        JSON.stringify({ error: "Invalid user_id - user not found" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -108,22 +130,37 @@ serve(async (req) => {
     // Extract contacts array from prospect_data
     const contacts = prospect_data?.contacts || (Array.isArray(prospect_data) ? prospect_data : []);
     
+    // Limit array size to prevent DoS
+    const MAX_CONTACTS = 100;
+    if (contacts.length > MAX_CONTACTS) {
+      return new Response(
+        JSON.stringify({ error: `Too many contacts (max ${MAX_CONTACTS})` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Insert each prospect as a separate row
     const insertedProspects: string[] = [];
     
     for (const contact of contacts) {
       // Generate a unique personal_id for Clay tracking
       const personalId = crypto.randomUUID();
+      
+      // Sanitize string fields to max length
+      const sanitize = (val: unknown, maxLen = 500): string | null => {
+        if (typeof val !== 'string') return null;
+        return val.substring(0, maxLen).trim() || null;
+      };
 
       const prospectInsert: Record<string, any> = {
         user_id,
-        first_name: contact.first_name || null,
-        last_name: contact.last_name || null,
-        job_title: contact.job_title || contact.title || null,
-        linkedin_url: contact.linkedin || contact.linkedin_url || null,
-        priority: contact.priority || null,
-        priority_reason: contact.priority_reason || null,
-        pitch_type: contact.pitch_type || contact.title || null,
+        first_name: sanitize(contact.first_name, 100),
+        last_name: sanitize(contact.last_name, 100),
+        job_title: sanitize(contact.job_title || contact.title, 200),
+        linkedin_url: sanitize(contact.linkedin || contact.linkedin_url, 500),
+        priority: sanitize(contact.priority, 20),
+        priority_reason: sanitize(contact.priority_reason, 500),
+        pitch_type: sanitize(contact.pitch_type || contact.title, 100),
         raw_data: contact,
         sent_to_clay: false,
         status: 'pending',
@@ -157,13 +194,13 @@ serve(async (req) => {
         .single();
 
       if (insertError) {
-        console.error("[receive-prospect-results] Insert error for contact:", insertError);
+        console.error("[receive-prospect-results] Insert error:", insertError.message);
       } else {
         insertedProspects.push(insertedProspect.id);
       }
     }
 
-    console.log("[receive-prospect-results] Inserted prospects:", insertedProspects.length);
+    console.log("[receive-prospect-results] Prospects saved:", insertedProspects.length);
 
     // Update legacy research_results table for backwards compatibility
     let legacyId = research_result_id;
@@ -194,8 +231,6 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", legacyId);
-
-      console.log("[receive-prospect-results] Updated legacy record:", legacyId);
     }
 
     return new Response(

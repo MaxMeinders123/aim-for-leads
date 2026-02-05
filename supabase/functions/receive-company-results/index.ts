@@ -17,7 +17,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    console.log("[receive-company-results] Payload:", JSON.stringify(body, null, 2));
+    console.log("[receive-company-results] Request received");
 
     // Extract fields - support multiple formats from n8n
     const {
@@ -49,7 +49,6 @@ serve(async (req) => {
     };
 
     const company_data = parseTextToJson(rawText);
-    console.log("[receive-company-results] Parsed company_data:", company_data);
 
     // Validate required fields
     if (!user_id || typeof user_id !== 'string') {
@@ -59,9 +58,40 @@ serve(async (req) => {
       );
     }
 
+    // Validate user_id format (should be UUID)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(user_id)) {
+      return new Response(
+        JSON.stringify({ error: "user_id must be a valid UUID" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify user exists in profiles table
+    const { data: userExists, error: userError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    if (userError || !userExists) {
+      return new Response(
+        JSON.stringify({ error: "Invalid user_id - user not found" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!company_domain || typeof company_domain !== 'string') {
       return new Response(
         JSON.stringify({ error: "company_domain is required and must be a string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate company_domain format and length
+    if (company_domain.length > 255 || !/^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$/.test(company_domain)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid company_domain format" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -111,7 +141,7 @@ serve(async (req) => {
       );
     }
 
-    console.log("[receive-company-results] Inserted company research:", insertedRecord.id);
+    console.log("[receive-company-results] Company research saved");
 
     // Update campaign_companies table if this came from campaign import
     if (campaign_company_id) {
@@ -123,7 +153,6 @@ serve(async (req) => {
         })
         .eq("id", campaign_company_id);
 
-      console.log("[receive-company-results] Updated campaign_companies:", campaign_company_id);
     }
 
     // Also update the legacy research_results table for backwards compatibility
@@ -147,13 +176,10 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingLegacy.id);
-
-      console.log("[receive-company-results] Updated legacy record:", existingLegacy.id);
     }
 
     // Auto-trigger prospect research if company is operating and we have the payload
     if (companyStatus === "Operating" && body.original_payload) {
-      console.log("[receive-company-results] Auto-triggering prospect research...");
 
       // Get webhook URL from user_integrations
       const { data: integrations } = await supabase
@@ -175,11 +201,9 @@ serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(prospectPayload),
-        }).catch((err) => {
-          console.error("[receive-company-results] Failed to trigger prospect webhook:", err);
+        }).catch(() => {
+          // Silently fail - user can manually trigger
         });
-
-        console.log("[receive-company-results] Prospect research webhook triggered");
       }
     }
 

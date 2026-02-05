@@ -17,7 +17,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    console.log("[update-prospect-status-from-salesforce] Payload:", JSON.stringify(body, null, 2));
+    console.log("[update-prospect-status-from-salesforce] Request received");
 
     const {
       salesforce_contact_id,
@@ -39,6 +39,25 @@ serve(async (req) => {
       );
     }
 
+    // Validate email format if provided
+    if (contact_email && typeof contact_email === 'string') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(contact_email) || contact_email.length > 255) {
+        return new Response(
+          JSON.stringify({ error: "Invalid email format" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Validate salesforce_contact_id length if provided
+    if (salesforce_contact_id && salesforce_contact_id.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "salesforce_contact_id is too long" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Try to find the prospect by salesforce_contact_id first, then by email
     let query = supabase
       .from("prospect_research")
@@ -53,7 +72,6 @@ serve(async (req) => {
     const { data: prospects, error: findError } = await query;
 
     if (findError) {
-      console.error("[update-prospect-status-from-salesforce] Find error:", findError);
       return new Response(
         JSON.stringify({
           error: "Failed to find prospect",
@@ -64,11 +82,10 @@ serve(async (req) => {
     }
 
     if (!prospects || prospects.length === 0) {
-      console.log(`[update-prospect-status-from-salesforce] No prospect found for salesforce_contact_id: ${salesforce_contact_id}, email: ${contact_email}`);
       return new Response(
         JSON.stringify({
           success: true,
-          message: "Prospect not found in database - may not have been synced yet",
+          message: "Prospect not found",
           skipped: true
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -111,7 +128,6 @@ serve(async (req) => {
       .select();
 
     if (updateError) {
-      console.error("[update-prospect-status-from-salesforce] Update error:", updateError);
       return new Response(
         JSON.stringify({
           error: "Failed to update prospect status",
@@ -121,7 +137,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[update-prospect-status-from-salesforce] Successfully updated ${updatedProspects?.length || 0} prospect(s)`);
+    console.log("[update-prospect-status-from-salesforce] Status updated");
 
     return new Response(
       JSON.stringify({
