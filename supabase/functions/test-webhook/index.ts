@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,32 @@ serve(async (req) => {
   }
 
   try {
+    // Authenticate the user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claims, error: authError } = await supabase.auth.getClaims(token);
+    
+    if (authError || !claims?.claims) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { url, user_id } = await req.json();
 
     if (!url) {
@@ -27,6 +54,23 @@ serve(async (req) => {
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
         throw new Error('Invalid protocol');
       }
+      
+      // Block private/internal network ranges
+      const hostname = parsedUrl.hostname.toLowerCase();
+      const blockedPatterns = [
+        'localhost', '127.0.0.1', '0.0.0.0', '::1',
+        /^10\./, /^172\.(1[6-9]|2[0-9]|3[01])\./, /^192\.168\./,
+        /\.local$/, /\.internal$/
+      ];
+      
+      for (const pattern of blockedPatterns) {
+        if (typeof pattern === 'string' && hostname === pattern) {
+          throw new Error('Internal addresses not allowed');
+        }
+        if (pattern instanceof RegExp && pattern.test(hostname)) {
+          throw new Error('Internal addresses not allowed');
+        }
+      }
     } catch {
       return new Response(
         JSON.stringify({ error: `Invalid URL: '${url}'` }),
@@ -41,18 +85,18 @@ serve(async (req) => {
       body: JSON.stringify({
         event: "test",
         source: "engagetech_researcher",
-        user_id: user_id || "test_user",
+        user_id: claims.claims.sub || "test_user",
         company_domain: "example.com",
       }),
     });
 
-    const responseText = await response.text();
+    await response.text(); // Consume response body
 
     return new Response(
       JSON.stringify({ 
         success: response.ok, 
         status: response.status,
-        message: response.ok ? "Webhook is working!" : responseText 
+        message: response.ok ? "Webhook is working!" : "Webhook test failed"
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

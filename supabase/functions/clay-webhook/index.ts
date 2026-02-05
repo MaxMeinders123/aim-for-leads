@@ -18,7 +18,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    console.log("[clay-webhook] Received:", JSON.stringify(body, null, 2));
+    console.log("[clay-webhook] Request received");
 
     // Clay sends enrichment results with personal_id to identify the prospect
     const { 
@@ -38,7 +38,14 @@ serve(async (req) => {
 
     // New flow: Update prospect by personal_id with enrichment data
     if (personal_id) {
-      console.log(`[clay-webhook] Updating prospect with personal_id: ${personal_id}`);
+      // Validate personal_id format (UUID)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(personal_id)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid personal_id format" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       
       const newStatus = is_duplicate === true ? 'duplicate' : 'inputted';
       
@@ -60,21 +67,13 @@ serve(async (req) => {
         .single();
 
       if (updateError) {
-        console.error("[clay-webhook] Failed to update prospect by personal_id:", updateError);
 
         // If no prospect found with this personal_id, it might be a data issue
         if (updateError.code === 'PGRST116') {
-          console.error(`[clay-webhook] No prospect found with personal_id: ${personal_id}`);
-          console.error("[clay-webhook] This usually means:");
-          console.error("  1. Prospect was sent to Clay before personal_id was generated");
-          console.error("  2. Clay sent wrong personal_id");
-          console.error("  3. Prospect was deleted from database");
-
           return new Response(
             JSON.stringify({
               error: `No prospect found with personal_id: ${personal_id}`,
-              details: "Prospect may have been sent to Clay without personal_id or may have been deleted",
-              personal_id: personal_id
+              details: "Prospect may not exist"
             }),
             { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -84,14 +83,13 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             error: "Database error while updating prospect",
-            details: updateError.message,
-            code: updateError.code
+            details: updateError.message
           }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      console.log(`[clay-webhook] Successfully updated prospect: ${updatedProspect?.id}, status: ${newStatus}`);
+      console.log("[clay-webhook] Prospect updated");
 
       return new Response(
         JSON.stringify({ 
@@ -108,12 +106,10 @@ serve(async (req) => {
     switch (event) {
       case "enrichment_complete": {
         if (body.company_id && data) {
-          console.log(`[clay-webhook] Legacy enrichment complete for company ${body.company_id}`);
           return new Response(
             JSON.stringify({ 
               success: true, 
-              message: "Enrichment data received (legacy)",
-              company_id: body.company_id 
+              message: "Enrichment data received (legacy)"
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -124,7 +120,6 @@ serve(async (req) => {
       case "contacts_enriched": {
         // Update prospect_research instead of contacts table
         if (campaign_id && data?.contacts) {
-          console.log(`[clay-webhook] Legacy contacts_enriched for campaign ${campaign_id}`);
           
           const results: { prospect_id: string; success: boolean }[] = [];
           
@@ -164,13 +159,11 @@ serve(async (req) => {
 
       default: {
         // Generic handler - just log and acknowledge
-        console.log(`[clay-webhook] Unknown event or no personal_id:`, body);
         
         return new Response(
           JSON.stringify({ 
             success: true, 
-            message: "Webhook received but no action taken (missing personal_id)",
-            received_at: new Date().toISOString()
+            message: "Webhook received but no action taken"
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );

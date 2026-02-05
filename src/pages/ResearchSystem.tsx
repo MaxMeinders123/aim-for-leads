@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,7 @@ import { Loader2, Search, Building2, Users, AlertCircle, CheckCircle2, Clock, Pl
 import { supabase } from '@/integrations/supabase/client';
 import { useAppStore } from '@/stores/appStore';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import { AppLayout } from '@/components/AppLayout';
 import { CompanyResearchCard } from '@/components/research/CompanyResearchCard';
 import { ProspectTable } from '@/components/research/ProspectTable';
@@ -53,6 +55,7 @@ interface ProspectResearch {
 
 const ResearchSystem = () => {
   const { integrations, user } = useAppStore();
+  const navigate = useNavigate();
   const [companyDomain, setCompanyDomain] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
   const [isCompanyLoading, setIsCompanyLoading] = useState(false);
@@ -61,22 +64,21 @@ const ResearchSystem = () => {
   const [prospects, setProspects] = useState<ProspectResearch[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Generate a unique user_id if not provided
+  // Require authenticated user - redirect to login if not authenticated
   useEffect(() => {
     if (user?.id) {
       setCurrentUserId(user.id);
     } else {
-      const sessionId = sessionStorage.getItem('research_user_id') || `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      sessionStorage.setItem('research_user_id', sessionId);
-      setCurrentUserId(sessionId);
+      // Redirect to login instead of creating insecure temporary IDs
+      navigate('/login');
     }
-  }, [user]);
+  }, [user, navigate]);
 
   // Real-time subscription to company_research
   useEffect(() => {
     if (!currentUserId) return;
 
-    console.log('[ResearchSystem] Setting up realtime subscription for user:', currentUserId);
+    logger.debug('[ResearchSystem] Setting up realtime subscription');
 
     const companyChannel = supabase
       .channel(`company_research_${currentUserId}`)
@@ -89,7 +91,7 @@ const ResearchSystem = () => {
           filter: `user_id=eq.${currentUserId}`,
         },
         (payload) => {
-          console.log('[ResearchSystem] Company research update:', payload);
+          logger.debug('[ResearchSystem] Company research update received');
           
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const newData = payload.new as CompanyResearch;
@@ -116,7 +118,7 @@ const ResearchSystem = () => {
   useEffect(() => {
     if (!companyResearch?.id) return;
 
-    console.log('[ResearchSystem] Setting up prospect subscription for company:', companyResearch.id);
+    logger.debug('[ResearchSystem] Setting up prospect subscription');
 
     const prospectChannel = supabase
       .channel(`prospect_research_${companyResearch.id}`)
@@ -129,7 +131,7 @@ const ResearchSystem = () => {
           filter: `company_research_id=eq.${companyResearch.id}`,
         },
         (payload) => {
-          console.log('[ResearchSystem] Prospect research update:', payload);
+          logger.debug('[ResearchSystem] Prospect research update received');
           
           if (payload.eventType === 'INSERT') {
             const newProspect = payload.new as ProspectResearch;
@@ -180,7 +182,7 @@ const ResearchSystem = () => {
     setProspects([]);
 
     try {
-      console.log('[ResearchSystem] Starting company research...');
+      logger.debug('[ResearchSystem] Starting company research');
       
       const response = await fetch(integrations.company_research_webhook_url, {
         method: 'POST',
@@ -198,7 +200,7 @@ const ResearchSystem = () => {
       toast.success('Company research started! Waiting for results...');
 
     } catch (err: any) {
-      console.error('[ResearchSystem] Error:', err);
+      logger.error('[ResearchSystem] Error:', err.message);
       setError(err.message);
       setIsCompanyLoading(false);
       toast.error(err.message);
@@ -219,7 +221,7 @@ const ResearchSystem = () => {
     setIsProspectLoading(true);
 
     try {
-      console.log('[ResearchSystem] Starting prospect research...');
+      logger.debug('[ResearchSystem] Starting prospect research');
       
       const response = await fetch(integrations.people_research_webhook_url, {
         method: 'POST',
@@ -239,7 +241,7 @@ const ResearchSystem = () => {
       toast.success('Prospect research started! Waiting for results...');
 
     } catch (err: any) {
-      console.error('[ResearchSystem] Error:', err);
+      logger.error('[ResearchSystem] Error:', err.message);
       toast.error(err.message);
       setIsProspectLoading(false);
     }
