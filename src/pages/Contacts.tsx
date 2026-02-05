@@ -8,15 +8,17 @@ import { CompanyProspectCard } from '@/components/research/CompanyProspectCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Search, Building2, Users, Loader2 } from 'lucide-react';
+import { Plus, Search, Building2, Users, Loader2, FolderOpen, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface CompanyResearch {
   id: string;
@@ -56,6 +58,14 @@ interface CompanyWithProspects {
   };
   prospects: ProspectResearch[];
   researchStatus: string;
+  campaignId: string | null;
+  campaignName: string | null;
+}
+
+interface CampaignGroup {
+  campaignId: string | null;
+  campaignName: string;
+  companies: CompanyWithProspects[];
 }
 
 export default function Contacts() {
@@ -65,11 +75,27 @@ export default function Contacts() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState('campaign');
+  const [campaigns, setCampaigns] = useState<Record<string, string>>({});
 
   const loadCompaniesWithProspects = useCallback(async () => {
     if (!user?.id) return;
 
     try {
+      // Load campaigns for mapping
+      const { data: campaignsData, error: campaignsError } = await supabase
+        .from('campaigns')
+        .select('id, name')
+        .eq('user_id', user.id);
+
+      if (!campaignsError && campaignsData) {
+        const campaignMap = campaignsData.reduce((acc, c) => {
+          acc[c.id] = c.name;
+          return acc;
+        }, {} as Record<string, string>);
+        setCampaigns(campaignMap);
+      }
+
       // Load all company research records for the user
       const { data: companyResearch, error: companyError } = await supabase
         .from('company_research')
@@ -149,6 +175,8 @@ export default function Contacts() {
           },
           prospects: prospectsByDomain[domain] || [],
           researchStatus: cr.status,
+          campaignId: cr.campaign_id,
+          campaignName: cr.campaign_id ? (campaigns[cr.campaign_id] || 'Unknown Campaign') : null,
         };
       });
 
@@ -203,16 +231,46 @@ export default function Contacts() {
     };
   }, [user?.id, loadCompaniesWithProspects]);
 
-  // Filter companies
+  // Filter companies based on active tab
   const filteredCompanies = companies.filter((item) => {
-    const matchesSearch = searchTerm === '' || 
+    const matchesSearch = searchTerm === '' ||
       item.company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.company.website?.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus = statusFilter === 'all' || item.researchStatus === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const matchesTab = activeTab === 'campaign'
+      ? item.campaignId !== null
+      : item.campaignId === null;
+
+    return matchesSearch && matchesStatus && matchesTab;
   });
+
+  // Group companies by campaign for the campaign tab
+  const campaignGroups: CampaignGroup[] = [];
+  if (activeTab === 'campaign') {
+    const groupMap = new Map<string, CompanyWithProspects[]>();
+
+    filteredCompanies.forEach(company => {
+      const key = company.campaignId || 'uncategorized';
+      if (!groupMap.has(key)) {
+        groupMap.set(key, []);
+      }
+      groupMap.get(key)!.push(company);
+    });
+
+    groupMap.forEach((companies, campaignId) => {
+      const campaignName = campaignId === 'uncategorized'
+        ? 'Uncategorized'
+        : campaigns[campaignId] || 'Unknown Campaign';
+
+      campaignGroups.push({
+        campaignId: campaignId === 'uncategorized' ? null : campaignId,
+        campaignName,
+        companies,
+      });
+    });
+  }
 
   // Calculate stats
   const totalCompanies = companies.length;
@@ -227,7 +285,7 @@ export default function Contacts() {
       <div className="flex flex-col h-full">
         <PageHeader
           title="Contacts"
-          subtitle="All researched companies and their prospects"
+          subtitle="Manage your researched companies and prospects"
           actions={
             <Button onClick={() => navigate('/research')}>
               <Plus className="w-4 h-4 mr-2" />
@@ -238,6 +296,19 @@ export default function Contacts() {
 
         <div className="flex-1 overflow-auto">
           <div className="p-6 space-y-6">
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full max-w-md grid-cols-2">
+                <TabsTrigger value="campaign" className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4" />
+                  Campaign List
+                </TabsTrigger>
+                <TabsTrigger value="manual" className="flex items-center gap-2">
+                  <UserPlus className="h-4 w-4" />
+                  Manual List
+                </TabsTrigger>
+              </TabsList>
+
             {/* Stats */}
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-card border rounded-lg p-4">
@@ -299,54 +370,125 @@ export default function Contacts() {
               </Select>
             </div>
 
-            {/* Company List */}
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : filteredCompanies.length === 0 ? (
-              <div className="text-center py-12 border rounded-lg bg-card">
-                <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">
-                  {searchTerm || statusFilter !== 'all' ? 'No matching companies' : 'No companies researched yet'}
-                </h3>
-                <p className="text-muted-foreground mb-4">
-                  {searchTerm || statusFilter !== 'all' 
-                    ? 'Try adjusting your search or filters' 
-                    : 'Start by researching some companies to find prospects'}
-                </p>
-                {!searchTerm && statusFilter === 'all' && (
-                  <Button onClick={() => navigate('/research')}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Start Research
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredCompanies.map((item) => (
-                  <div key={item.company.id} className="relative">
-                    {/* Research status badge */}
-                    {item.researchStatus !== 'completed' && (
-                      <Badge 
-                        className={`absolute -top-2 -right-2 z-10 ${
-                          item.researchStatus === 'processing' 
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' 
-                            : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                        }`}
-                      >
-                        {item.researchStatus}
-                      </Badge>
-                    )}
-                    <CompanyProspectCard
-                      company={item.company}
-                      prospects={item.prospects}
-                      onProspectUpdated={loadCompaniesWithProspects}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Tab Content */}
+            <TabsContent value="campaign" className="mt-6 space-y-6">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : campaignGroups.length === 0 ? (
+                <div className="text-center py-12 border rounded-lg bg-card">
+                  <FolderOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">
+                    {searchTerm || statusFilter !== 'all' ? 'No matching companies in campaigns' : 'No campaign companies yet'}
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    {searchTerm || statusFilter !== 'all'
+                      ? 'Try adjusting your search or filters'
+                      : 'Companies researched through campaigns will appear here'}
+                  </p>
+                  {!searchTerm && statusFilter === 'all' && (
+                    <Button onClick={() => navigate('/campaigns')}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Campaign
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  {campaignGroups.map((group) => (
+                    <div key={group.campaignId || 'uncategorized'} className="space-y-4">
+                      <div className="flex items-center gap-3 sticky top-0 bg-background/95 backdrop-blur-sm py-2 z-10">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                            <FolderOpen className="h-5 w-5 text-primary" />
+                            {group.campaignName}
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {group.companies.length} {group.companies.length === 1 ? 'company' : 'companies'} · {' '}
+                            {group.companies.reduce((sum, c) => sum + c.prospects.length, 0)} prospects
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-4 pl-4">
+                        {group.companies.map((item) => (
+                          <div key={item.company.id} className="relative">
+                            {item.researchStatus !== 'completed' && (
+                              <Badge
+                                className={cn(
+                                  'absolute -top-2 -right-2 z-10',
+                                  item.researchStatus === 'processing'
+                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                )}
+                              >
+                                {item.researchStatus}
+                              </Badge>
+                            )}
+                            <CompanyProspectCard
+                              company={item.company}
+                              prospects={item.prospects}
+                              onProspectUpdated={loadCompaniesWithProspects}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="manual" className="mt-6">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredCompanies.length === 0 ? (
+                <div className="text-center py-12 border rounded-lg bg-card">
+                  <UserPlus className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">
+                    {searchTerm || statusFilter !== 'all' ? 'No matching manually added companies' : 'No manually added companies yet'}
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    {searchTerm || statusFilter !== 'all'
+                      ? 'Try adjusting your search or filters'
+                      : 'Manually added companies and contacts will appear here'}
+                  </p>
+                  {!searchTerm && statusFilter === 'all' && (
+                    <Button onClick={() => navigate('/research')}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Manually
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredCompanies.map((item) => (
+                    <div key={item.company.id} className="relative">
+                      {item.researchStatus !== 'completed' && (
+                        <Badge
+                          className={cn(
+                            'absolute -top-2 -right-2 z-10',
+                            item.researchStatus === 'processing'
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                          )}
+                        >
+                          {item.researchStatus}
+                        </Badge>
+                      )}
+                      <CompanyProspectCard
+                        company={item.company}
+                        prospects={item.prospects}
+                        onProspectUpdated={loadCompaniesWithProspects}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>

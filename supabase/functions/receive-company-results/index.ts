@@ -23,6 +23,7 @@ serve(async (req) => {
     const {
       user_id,
       company_domain,
+      campaign_id,
       status,
       error_message
     } = body;
@@ -115,6 +116,7 @@ serve(async (req) => {
       .insert({
         user_id,
         company_domain,
+        campaign_id: campaign_id || null,
         company_name: companyName,
         status: status === "rejected" ? "failed" : "completed",
         company_status: companyStatus,
@@ -184,8 +186,9 @@ serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(prospectPayload),
-        }).catch(() => {
-          // Silently fail - user can manually trigger
+        }).catch((error) => {
+          // Log error for debugging but don't block the response
+          console.error("[receive-company-results] Failed to trigger prospect research:", error);
         });
       }
     }

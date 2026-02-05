@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Folder } from 'lucide-react';
+import { ArrowRight, Folder, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { CampaignSteps } from '@/components/CampaignSteps';
@@ -15,6 +15,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -45,6 +61,9 @@ export default function CampaignSetup() {
   } = useAppStore();
 
   const [isLoading, setIsLoading] = useState(false);
+  const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<typeof campaigns[0] | null>(null);
 
   // Load campaigns on mount
   useEffect(() => {
@@ -68,6 +87,62 @@ export default function CampaignSetup() {
   const handleCampaignSelect = (campaign: typeof campaigns[0]) => {
     setSelectedCampaign(campaign);
     resetCampaignDraft();
+    setEditingCampaign(null);
+  };
+
+  const handleEditCampaign = (campaign: typeof campaigns[0], e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingCampaign(campaign);
+    setSelectedCampaign(null);
+    setCampaignDraft({
+      name: campaign.name || '',
+      target_region: campaign.target_region || '',
+      product: campaign.product || '',
+      product_category: campaign.product_category || '',
+      technical_focus: campaign.technical_focus || '',
+      job_titles: campaign.job_titles || '',
+      personas: campaign.personas || '',
+      target_verticals: campaign.target_verticals || '',
+      primary_angle: campaign.primary_angle || '',
+      secondary_angle: campaign.secondary_angle || '',
+      pain_points: campaign.pain_points || '',
+    });
+    setCampaignStep(1); // Start from step 1 (Identity)
+  };
+
+  const handleDeleteCampaign = async () => {
+    if (!campaignToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Not authenticated');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('delete-campaign', {
+        body: { campaign_id: campaignToDelete },
+      });
+
+      if (error) throw error;
+
+      // Remove from local state
+      setCampaigns(campaigns.filter((c) => c.id !== campaignToDelete));
+
+      // Clear selection if deleted campaign was selected
+      if (selectedCampaign?.id === campaignToDelete) {
+        setSelectedCampaign(null);
+      }
+
+      toast.success('Campaign deleted successfully');
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast.error(error.message || 'Failed to delete campaign');
+    } finally {
+      setIsDeleting(false);
+      setCampaignToDelete(null);
+    }
   };
 
   const handleNewCampaignName = (name: string) => {
@@ -122,33 +197,63 @@ export default function CampaignSetup() {
 
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .insert({
-          user_id: user.id,
-          name: campaignDraft.name,
-          target_region: campaignDraft.target_region,
-          product: campaignDraft.product,
-          product_category: campaignDraft.product_category,
-          technical_focus: campaignDraft.technical_focus,
-          job_titles: campaignDraft.job_titles,
-          personas: campaignDraft.personas,
-          target_verticals: campaignDraft.target_verticals,
-          primary_angle: campaignDraft.primary_angle,
-          secondary_angle: campaignDraft.secondary_angle,
-          pain_points: campaignDraft.pain_points,
-        })
-        .select()
-        .single();
+      if (editingCampaign) {
+        // Update existing campaign
+        const { data, error } = await supabase
+          .from('campaigns')
+          .update({
+            name: campaignDraft.name,
+            target_region: campaignDraft.target_region,
+            product: campaignDraft.product,
+            product_category: campaignDraft.product_category,
+            technical_focus: campaignDraft.technical_focus,
+            job_titles: campaignDraft.job_titles,
+            personas: campaignDraft.personas,
+            target_verticals: campaignDraft.target_verticals,
+            primary_angle: campaignDraft.primary_angle,
+            secondary_angle: campaignDraft.secondary_angle,
+            pain_points: campaignDraft.pain_points,
+          })
+          .eq('id', editingCampaign.id)
+          .select()
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      setSelectedCampaign(data);
-      setCampaigns([data, ...campaigns]);
-      toast.success('Campaign created!');
-      navigate('/add-companies');
+        setSelectedCampaign(data);
+        setCampaigns(campaigns.map((c) => (c.id === data.id ? data : c)));
+        toast.success('Campaign updated!');
+        navigate('/add-companies');
+      } else {
+        // Create new campaign
+        const { data, error } = await supabase
+          .from('campaigns')
+          .insert({
+            user_id: user.id,
+            name: campaignDraft.name,
+            target_region: campaignDraft.target_region,
+            product: campaignDraft.product,
+            product_category: campaignDraft.product_category,
+            technical_focus: campaignDraft.technical_focus,
+            job_titles: campaignDraft.job_titles,
+            personas: campaignDraft.personas,
+            target_verticals: campaignDraft.target_verticals,
+            primary_angle: campaignDraft.primary_angle,
+            secondary_angle: campaignDraft.secondary_angle,
+            pain_points: campaignDraft.pain_points,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setSelectedCampaign(data);
+        setCampaigns([data, ...campaigns]);
+        toast.success('Campaign created!');
+        navigate('/add-companies');
+      }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to create campaign');
+      toast.error(error.message || 'Failed to save campaign');
     } finally {
       setIsLoading(false);
     }
@@ -159,7 +264,7 @@ export default function CampaignSetup() {
       return selectedCampaign ? 'Continue with Campaign' : 'Next';
     }
     if (campaignStep === 3) {
-      return 'Create Campaign';
+      return editingCampaign ? 'Update Campaign' : 'Create Campaign';
     }
     return 'Next';
   };
@@ -194,21 +299,54 @@ export default function CampaignSetup() {
                 </div>
                 <div className="space-y-2">
                   {campaigns.map((campaign) => (
-                    <button
+                    <div
                       key={campaign.id}
-                      onClick={() => handleCampaignSelect(campaign)}
                       className={cn(
-                        'w-full p-4 rounded-xl border-2 text-left transition-all',
+                        'w-full p-4 rounded-xl border-2 transition-all relative group',
                         selectedCampaign?.id === campaign.id
                           ? 'border-primary bg-primary/5'
                           : 'border-border hover:border-primary/50'
                       )}
                     >
-                      <p className="font-medium text-foreground">{campaign.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {campaign.companies_count} companies · {campaign.contacts_count} contacts
-                      </p>
-                    </button>
+                      <button
+                        onClick={() => handleCampaignSelect(campaign)}
+                        className="w-full text-left pr-10"
+                      >
+                        <p className="font-medium text-foreground">{campaign.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {campaign.companies_count || 0} companies · {campaign.contacts_count || 0} contacts
+                        </p>
+                      </button>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="absolute top-3 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => handleEditCampaign(campaign, e)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCampaignToDelete(campaign.id);
+                            }}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   ))}
                   {campaigns.length === 0 && (
                     <p className="text-sm text-muted-foreground py-4">No campaigns yet</p>
@@ -384,6 +522,28 @@ export default function CampaignSetup() {
           </Button>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!campaignToDelete} onOpenChange={() => setCampaignToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this campaign? This will permanently delete all associated companies, contacts, and research data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCampaign}
+              disabled={isDeleting}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
