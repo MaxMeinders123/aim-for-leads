@@ -74,6 +74,8 @@ const parseToArray = (text?: string): string[] => {
 // Build the structured payload for company research
 const buildCompanyPayload = (campaign: Campaign | null, company: Company, userId: string) => ({
   user_id: userId,
+  campaign_id: campaign?.id || null,
+  salesforce_account_id: company.salesforce_account_id || null,
   company_domain: company.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || company.name.toLowerCase().replace(/\s+/g, ''),
   campaign: {
     campaignName: campaign?.name || '',
@@ -104,6 +106,8 @@ const buildPeoplePayload = (
   companyResearchId?: string
 ) => ({
   user_id: userId,
+  campaign_id: campaign?.id || null,
+  salesforce_account_id: company.salesforce_account_id || null,
   company_domain: company.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || company.name.toLowerCase().replace(/\s+/g, ''),
   company_research_id: companyResearchId, // UUID linking to company_research table
   campaign: {

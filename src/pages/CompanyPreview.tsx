@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { Rocket, CheckCircle } from 'lucide-react';
+import { Rocket, CheckCircle, Building2, Globe, Linkedin, Check } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { useAppStore, Campaign, Company, CompanyResearchProgress } from '@/stores/appStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -121,41 +122,114 @@ export default function CompanyPreview() {
         />
 
         <div className="flex-1 overflow-auto px-6 py-4">
-          <div className="space-y-2 max-w-2xl">
-            {companies.map((company) => (
-              <button
-                key={company.id}
-                onClick={() => toggleCompanySelection(company.id)}
-                className={cn(
-                  'w-full p-4 rounded-xl border-2 flex items-center gap-4 transition-all text-left',
-                  company.selected
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                )}
-              >
-                <Checkbox
-                  checked={company.selected}
-                  onCheckedChange={() => toggleCompanySelection(company.id)}
-                  className="w-5 h-5"
-                />
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">{company.name}</p>
-                  {company.website && (
-                    <p className="text-sm text-muted-foreground">{company.website}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
+            {companies.map((company) => {
+              const isSelected = company.selected;
+
+              return (
+                <div
+                  key={company.id}
+                  onClick={() => toggleCompanySelection(company.id)}
+                  className={cn(
+                    'relative p-5 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md',
+                    isSelected
+                      ? 'border-primary bg-primary/5 shadow-sm'
+                      : 'border-border hover:border-primary/50'
+                  )}
+                >
+                  {/* Selection Checkbox */}
+                  <div className="absolute top-3 right-3">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => toggleCompanySelection(company.id)}
+                      className={cn(
+                        'border-2',
+                        isSelected && 'border-primary'
+                      )}
+                    />
+                  </div>
+
+                  {/* Company Icon */}
+                  <div className={cn(
+                    'w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-colors',
+                    isSelected ? 'bg-primary/10' : 'bg-muted'
+                  )}>
+                    <Building2 className={cn(
+                      'w-6 h-6 transition-colors',
+                      isSelected ? 'text-primary' : 'text-muted-foreground'
+                    )} />
+                  </div>
+
+                  {/* Company Name */}
+                  <h3 className="font-semibold text-lg text-foreground mb-3 pr-8 line-clamp-2">
+                    {company.name}
+                  </h3>
+
+                  {/* Company Details */}
+                  <div className="space-y-2.5">
+                    {/* Website */}
+                    {company.website && (
+                      <div className="flex items-start gap-2.5">
+                        <Globe className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <a
+                          href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-sm text-primary hover:underline break-all line-clamp-1"
+                        >
+                          {company.website.replace(/^https?:\/\/(www\.)?/, '')}
+                        </a>
+                      </div>
+                    )}
+
+                    {/* LinkedIn */}
+                    {company.linkedin_url && (
+                      <div className="flex items-start gap-2.5">
+                        <Linkedin className="w-4 h-4 text-[#0A66C2] mt-0.5 flex-shrink-0" />
+                        <a
+                          href={company.linkedin_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-sm text-[#0A66C2] hover:underline break-all line-clamp-1"
+                        >
+                          LinkedIn Profile
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Salesforce Badge */}
+                    {company.salesforce_account_id && (
+                      <Badge variant="outline" className="text-xs">
+                        <span className="text-[#00A1E0]">●</span>
+                        <span className="ml-1">Salesforce</span>
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Selection Indicator */}
+                  {isSelected && (
+                    <div className="absolute bottom-3 right-3">
+                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                        <Check className="w-4 h-4 text-primary-foreground" />
+                      </div>
+                    </div>
                   )}
                 </div>
-              </button>
-            ))}
+              );
+            })}
 
             {companies.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                <p>No companies loaded yet.</p>
+              <div className="col-span-full text-center py-12 text-muted-foreground">
+                <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-lg font-medium mb-2">No companies added yet</p>
+                <p className="text-sm mb-4">Add companies to your campaign to start research</p>
                 <Button
-                  variant="link"
                   onClick={() => navigate('/add-companies')}
                   className="mt-2"
                 >
-                  Add companies
+                  Add Companies
                 </Button>
               </div>
             )}
