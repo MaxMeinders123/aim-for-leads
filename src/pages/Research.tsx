@@ -477,6 +477,20 @@ export default function Research() {
                             )}
                           </>
                         )}
+                        {/* Manual failsafe: trigger prospect research when stuck in awaiting state */}
+                        {(cp.step === 'people' || cp.step === 'awaiting_callback') && cp.companyData && !cp.peopleData?.contacts?.length && (
+                          <Button 
+                            size="sm" 
+                            variant="secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              retryStep(cp.companyId, 'people');
+                            }}
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            Manually Trigger Prospect Research
+                          </Button>
+                        )}
                       </div>
 
                       {/* Company data skeleton */}
