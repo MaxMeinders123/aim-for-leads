@@ -166,9 +166,17 @@ serve(async (req) => {
         .eq("id", existingLegacy.id);
     }
 
-    // Auto-trigger prospect research if company is operating
-    // Reconstruct the prospect payload from DB data (original_payload is not sent by n8n)
-    if (companyStatus === "Operating") {
+    // Auto-trigger prospect research for companies that are valid targets:
+    // - "Operating" companies
+    // - "Acquired" companies that still operate independently
+    // - "Renamed" companies (same business, different name)
+    const stillOperates = company_data?.stillOperatesIndependently === true;
+    const shouldTriggerProspects =
+      companyStatus === "Operating" ||
+      (companyStatus === "Acquired" && stillOperates) ||
+      companyStatus === "Renamed";
+
+    if (shouldTriggerProspects) {
       try {
         // Get webhook URL from user_integrations (fall back to default)
         const DEFAULT_PROSPECT_WEBHOOK = "https://engagetech12.app.n8n.cloud/webhook/845a71b9-f7fd-4466-9599-3cb79e34d3a4";
@@ -241,19 +249,21 @@ serve(async (req) => {
           company_research_id: insertedRecord.id,
           company_domain,
           salesforce_account_id: salesforce_account_id || null,
+          salesforce_campaign_id: body.salesforce_campaign_id || null,
           campaign: campaignContext,
           company: companyInfo,
           companyResearch: company_data,
+          qualify: true,
         };
 
-        // Trigger prospect webhook asynchronously (don't wait for response)
-        fetch(prospectWebhookUrl, {
+        // Trigger prospect webhook - must await to ensure it completes
+        // before the edge function runtime terminates
+        const prospectResponse = await fetch(prospectWebhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(prospectPayload),
-        }).catch((error) => {
-          console.error("[receive-company-results] Failed to trigger prospect research:", error);
         });
+        console.log("[receive-company-results] Prospect webhook response:", prospectResponse.status);
 
         console.log("[receive-company-results] Prospect research auto-triggered");
       } catch (triggerError) {

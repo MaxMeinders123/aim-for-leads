@@ -91,34 +91,13 @@ serve(async (req) => {
         // Generate personal_id if not exists
         const personalId = prospect.personal_id || crypto.randomUUID();
 
-        // Build Clay payload with all required fields
+        // Build Clay payload - only the fields Clay actually needs
         const clayPayload = {
           personal_id: personalId,
-          prospect_id: prospectId,
-          first_name: prospect.first_name,
-          last_name: prospect.last_name,
-          full_name: `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim(),
           title: prospect.job_title,
-          job_title: prospect.job_title,
           linkedin_url: prospect.linkedin_url,
-          priority: prospect.priority,
-          priority_reason: prospect.priority_reason,
-          pitch_type: prospect.pitch_type,
-          // Salesforce IDs - CRITICAL for Clay to add to correct campaign
           salesforce_account_id: prospect.salesforce_account_id || prospect.company_research?.salesforce_account_id,
           salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.company_research?.salesforce_campaign_id,
-          // Company info from company_research join or direct columns
-          company_id: prospect.company_id || prospect.company_research?.id,
-          company: {
-            id: prospect.company_research?.id,
-            domain: prospect.company_research?.company_domain,
-            name: prospect.company_research?.company_name,
-            status: prospect.company_research?.company_status,
-            cloud_provider: prospect.company_research?.cloud_provider,
-            cloud_confidence: prospect.company_research?.cloud_confidence,
-          },
-          user_id: prospect.user_id,
-          sent_at: new Date().toISOString(),
         };
 
         console.log("[send-prospect-to-clay] Sending to Clay:", clayPayload);
