@@ -293,6 +293,7 @@ export type Database = {
           priority_reason: string | null
           raw_data: Json | null
           salesforce_account_id: string | null
+          salesforce_campaign_id: string | null
           salesforce_url: string | null
           sent_to_clay: boolean
           sent_to_clay_at: string | null
@@ -318,6 +319,7 @@ export type Database = {
           priority_reason?: string | null
           raw_data?: Json | null
           salesforce_account_id?: string | null
+          salesforce_campaign_id?: string | null
           salesforce_url?: string | null
           sent_to_clay?: boolean
           sent_to_clay_at?: string | null
@@ -343,6 +345,7 @@ export type Database = {
           priority_reason?: string | null
           raw_data?: Json | null
           salesforce_account_id?: string | null
+          salesforce_campaign_id?: string | null
           salesforce_url?: string | null
           sent_to_clay?: boolean
           sent_to_clay_at?: string | null
