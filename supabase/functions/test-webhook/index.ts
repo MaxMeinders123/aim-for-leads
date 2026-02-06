@@ -55,12 +55,21 @@ serve(async (req) => {
         throw new Error('Invalid protocol');
       }
       
-      // Block private/internal network ranges
+      // Block private/internal network ranges to prevent SSRF
       const hostname = parsedUrl.hostname.toLowerCase();
-      const blockedPatterns = [
-        'localhost', '127.0.0.1', '0.0.0.0', '::1',
+      const blockedPatterns: (string | RegExp)[] = [
+        // Loopback addresses
+        'localhost', /^127\./, /^0\.0\.0\.0$/, '::1', /^::ffff:127\./,
+        // Private networks (RFC 1918)
         /^10\./, /^172\.(1[6-9]|2[0-9]|3[01])\./, /^192\.168\./,
-        /\.local$/, /\.internal$/
+        // Link-local / Cloud metadata endpoints (AWS/Azure/GCP)
+        /^169\.254\./, /^fe80:/i, /^::ffff:169\.254\./,
+        // Broadcast / Reserved addresses
+        /^255\.255\.255\.255$/, /^224\./, /^240\./,
+        // IPv6 private (Unique Local Addresses)
+        /^fd[0-9a-f]{2}:/i, /^fc[0-9a-f]{2}:/i,
+        // Special domains
+        /\.local$/i, /\.internal$/i, /\.localhost$/i
       ];
       
       for (const pattern of blockedPatterns) {
