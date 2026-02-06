@@ -3,15 +3,15 @@
 // Update N8N_BASE_URL to match your n8n instance
 // =============================================================================
 
-const N8N_BASE_URL = 'https://engagetech.app.n8n.cloud/webhook';
+const N8N_BASE_URL = "https://engagetech.app.n8n.cloud/webhook";
 
 export const WEBHOOKS = {
   /** Salesforce Campaign Import - queries SF for target accounts */
   SALESFORCE_IMPORT: `${N8N_BASE_URL}/salesforce-campaign-import`,
   /** Company Research - validates company status (Operating/Acquired/Bankrupt) */
-  COMPANY_RESEARCH: `${N8N_BASE_URL}/f545849d-1d19-43e7-9dfb-11e34166907f`,
+  COMPANY_RESEARCH: `https://engagetech12.app.n8n.cloud/webhook-test/f545849d-1d19-43e7-9dfb-11e34166907f`,
   /** Prospect Research - finds decision-makers at company */
-  PROSPECT_RESEARCH: `${N8N_BASE_URL}/845a71b9-f7fd-4466-9599-3cb79e34d3a4`,
+  PROSPECT_RESEARCH: `https://engagetech12.app.n8n.cloud/webhook-test/845a71b9-f7fd-4466-9599-3cb79e34d3a4`,
 } as const;
 
 // Supabase Edge Function endpoints (auto-derived from project URL)
@@ -26,19 +26,19 @@ export const EDGE_FUNCTIONS = {
 
 // Company status types from AI research
 export const COMPANY_STATUSES = {
-  OPERATING: 'Operating',
-  ACQUIRED: 'Acquired',
-  RENAMED: 'Renamed',
-  BANKRUPT: 'Bankrupt',
-  NOT_FOUND: 'Not_Found',
+  OPERATING: "Operating",
+  ACQUIRED: "Acquired",
+  RENAMED: "Renamed",
+  BANKRUPT: "Bankrupt",
+  NOT_FOUND: "Not_Found",
 } as const;
 
 // Prospect Clay statuses
 export const CLAY_STATUSES = {
-  NOT_SENT: 'not_sent',
-  SENT: 'sent_to_clay',
-  PENDING: 'pending',
-  INPUTTED: 'inputted',
-  DUPLICATE: 'duplicate',
-  FAILED: 'failed',
+  NOT_SENT: "not_sent",
+  SENT: "sent_to_clay",
+  PENDING: "pending",
+  INPUTTED: "inputted",
+  DUPLICATE: "duplicate",
+  FAILED: "failed",
 } as const;
