@@ -65,20 +65,19 @@ serve(async (req) => {
 
     for (const prospectId of idsToSend) {
       try {
-        // Get prospect data with company info (using new columns)
+        // Get prospect data with company info from companies table
         // SECURITY: Filter by user_id to prevent accessing other users' prospects
         const { data: prospect, error: prospectError } = await supabase
           .from("prospect_research")
           .select(`
             *,
-            company_research:company_research_id (
+            companies:company_id (
               id,
-              company_domain,
-              company_name,
-              company_status,
-              cloud_provider,
-              cloud_confidence,
-              raw_data
+              name,
+              website,
+              salesforce_account_id,
+              salesforce_campaign_id,
+              campaign_id
             )
           `)
           .eq("id", prospectId)
@@ -99,12 +98,12 @@ serve(async (req) => {
         // Generate personal_id if not exists
         const personalId = prospect.personal_id || crypto.randomUUID();
 
-        // Build Clay payload - ONLY these 4 fields, nothing more
+        // Build Clay payload - gets salesforce IDs from prospect or companies table
         const clayPayload = {
           personal_id: personalId,
           linkedin_url: prospect.linkedin_url,
-          salesforce_account_id: prospect.salesforce_account_id || prospect.company_research?.salesforce_account_id,
-          salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.company_research?.salesforce_campaign_id,
+          salesforce_account_id: prospect.salesforce_account_id || prospect.companies?.salesforce_account_id,
+          salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.companies?.salesforce_campaign_id,
         };
 
         console.log("[send-prospect-to-clay] Sending to Clay:", clayPayload);
