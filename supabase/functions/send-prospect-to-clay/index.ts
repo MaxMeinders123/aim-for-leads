@@ -99,10 +99,9 @@ serve(async (req) => {
         // Generate personal_id if not exists
         const personalId = prospect.personal_id || crypto.randomUUID();
 
-        // Build Clay payload - only the fields Clay actually needs
+        // Build Clay payload - ONLY these 4 fields, nothing more
         const clayPayload = {
           personal_id: personalId,
-          title: prospect.job_title,
           linkedin_url: prospect.linkedin_url,
           salesforce_account_id: prospect.salesforce_account_id || prospect.company_research?.salesforce_account_id,
           salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.company_research?.salesforce_campaign_id,
