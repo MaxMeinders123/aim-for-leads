@@ -169,7 +169,7 @@ export function getResolvedWebhookUrl(
       case 'company_research': return WEBHOOKS.COMPANY_RESEARCH;
       case 'people_research': return WEBHOOKS.PROSPECT_RESEARCH;
       case 'salesforce_import': return WEBHOOKS.SALESFORCE_IMPORT;
-      case 'clay': return '';
+      case 'clay': return WEBHOOKS.CLAY;
     }
   }
 
@@ -181,7 +181,7 @@ export function getResolvedWebhookUrl(
     case 'salesforce_import':
       return integrations.salesforce_import_webhook_url || WEBHOOKS.SALESFORCE_IMPORT;
     case 'clay':
-      return integrations.clay_webhook_url || '';
+      return integrations.clay_webhook_url || WEBHOOKS.CLAY;
   }
 }
 
