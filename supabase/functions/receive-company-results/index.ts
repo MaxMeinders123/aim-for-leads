@@ -166,33 +166,98 @@ serve(async (req) => {
         .eq("id", existingLegacy.id);
     }
 
-    // Auto-trigger prospect research if company is operating and we have the payload
-    if (companyStatus === "Operating" && body.original_payload) {
+    // Auto-trigger prospect research if company is operating
+    // Reconstruct the prospect payload from DB data (original_payload is not sent by n8n)
+    if (companyStatus === "Operating") {
+      try {
+        // Get webhook URL from user_integrations (fall back to default)
+        const DEFAULT_PROSPECT_WEBHOOK = "https://engagetech12.app.n8n.cloud/webhook/845a71b9-f7fd-4466-9599-3cb79e34d3a4";
 
-      // Get webhook URL from user_integrations
-      const { data: integrations } = await supabase
-        .from("user_integrations")
-        .select("people_research_webhook_url")
-        .eq("user_id", user_id)
-        .single();
+        const { data: integrations } = await supabase
+          .from("user_integrations")
+          .select("people_research_webhook_url")
+          .eq("user_id", user_id)
+          .maybeSingle();
 
-      if (integrations?.people_research_webhook_url) {
-        // Build prospect payload with company_research_id
+        const prospectWebhookUrl = integrations?.people_research_webhook_url || DEFAULT_PROSPECT_WEBHOOK;
+
+        // Look up campaign data to build the prospect payload
+        let campaignContext: Record<string, unknown> = {};
+        if (campaign_id) {
+          const { data: campaign } = await supabase
+            .from("campaigns")
+            .select("name, product, product_category, primary_angle, secondary_angle, target_region, pain_points, personas, job_titles, target_verticals, technical_focus")
+            .eq("id", campaign_id)
+            .maybeSingle();
+
+          if (campaign) {
+            campaignContext = {
+              campaignName: campaign.name || "",
+              product: campaign.product || "",
+              productCategory: campaign.product_category || "",
+              primaryAngle: campaign.primary_angle || "",
+              secondaryAngle: campaign.secondary_angle || "",
+              targetRegion: campaign.target_region || "",
+              painPoints: campaign.pain_points || "",
+              targetPersonas: campaign.personas || "",
+              targetTitles: campaign.job_titles || "",
+              targetVerticals: campaign.target_verticals || "",
+              techFocus: campaign.technical_focus || "",
+            };
+          }
+        }
+
+        // Look up company info from companies table
+        let companyInfo: Record<string, string> = {
+          name: companyName || company_domain,
+          website: company_domain,
+          linkedin: "",
+        };
+
+        if (campaign_id) {
+          const { data: companyRecords } = await supabase
+            .from("companies")
+            .select("name, website, linkedin_url, salesforce_account_id")
+            .eq("campaign_id", campaign_id);
+
+          const matchingCompany = companyRecords?.find((c: { name: string; website?: string | null }) => {
+            const domain = c.website?.replace(/^https?:\/\//, "").replace(/\/$/, "") || "";
+            return domain === company_domain || c.name.toLowerCase().replace(/\s+/g, "") === company_domain;
+          });
+
+          if (matchingCompany) {
+            companyInfo = {
+              name: matchingCompany.name || company_domain,
+              website: matchingCompany.website || company_domain,
+              linkedin: matchingCompany.linkedin_url || "",
+            };
+          }
+        }
+
+        // Build prospect payload matching n8n webhook expectations
         const prospectPayload = {
-          ...body.original_payload,
+          user_id,
+          campaign_id: campaign_id || null,
           company_research_id: insertedRecord.id,
-          company_data: company_data,
+          company_domain,
+          salesforce_account_id: salesforce_account_id || null,
+          campaign: campaignContext,
+          company: companyInfo,
+          companyResearch: company_data,
         };
 
         // Trigger prospect webhook asynchronously (don't wait for response)
-        fetch(integrations.people_research_webhook_url, {
+        fetch(prospectWebhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(prospectPayload),
         }).catch((error) => {
-          // Log error for debugging but don't block the response
           console.error("[receive-company-results] Failed to trigger prospect research:", error);
         });
+
+        console.log("[receive-company-results] Prospect research auto-triggered");
+      } catch (triggerError) {
+        console.error("[receive-company-results] Error auto-triggering prospect research:", triggerError);
       }
     }
 
