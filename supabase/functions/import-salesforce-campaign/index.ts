@@ -92,7 +92,7 @@ serve(async (req) => {
       name: acc.name || acc.Name || 'Unknown',
       website: acc.website || acc.Website || null,
       linkedin_url: acc.linkedin_url || acc.LinkedIn_URL__c || null,
-      salesforce_account_id: acc.id || acc.Id || null,
+      salesforce_account_id: acc.salesforce_account_id || acc.id || acc.Id || null,
       salesforce_campaign_id,
       status: 'imported',
     }));
