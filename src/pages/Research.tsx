@@ -157,14 +157,30 @@ export default function Research() {
 
       try {
         const webhookUrl = getResolvedWebhookUrl('company_research', userWebhooks);
-        const companyData = await callResearchProxy(webhookUrl, payload);
+        const response = await callResearchProxy(webhookUrl, payload);
 
-        if (companyData?.status === 'processing') {
+        if (response?.status === 'processing') {
+          // n8n is processing async (backgroundMode)
+          updateCompanyProgress(company.id, { step: 'awaiting_callback' });
+          setExpandedCompanies((prev) => new Set(prev).add(company.id));
           toast.info(`Research started for ${company.name}. Results will appear via realtime updates.`);
           continue;
         }
 
-        const parsed = companyData ? (parseAIResponse(companyData) as CompanyResearchResult) : null;
+        // n8n processed synchronously: the response is the edge function callback result
+        // (not the actual company data). The edge function auto-triggers prospect research.
+        // Actual company data arrives via realtime subscription from company_research table.
+        if (response?.received === true && response?.company_research_id) {
+          updateCompanyProgress(company.id, {
+            step: 'awaiting_callback',
+            company_research_id: response.company_research_id,
+          });
+          setExpandedCompanies((prev) => new Set(prev).add(company.id));
+          continue;
+        }
+
+        // Direct AI response (rare - only if n8n returns raw data)
+        const parsed = response ? (parseAIResponse(response) as CompanyResearchResult) : null;
 
         if (parsed?.status === 'error' && !parsed?.company_status) {
           updateCompanyProgress(company.id, { step: 'error', error: 'Research failed' });
