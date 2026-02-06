@@ -152,6 +152,7 @@ serve(async (req) => {
         return val.substring(0, maxLen).trim() || null;
       };
 
+      // ALWAYS include salesforce_campaign_id and salesforce_account_id from the original request
       const prospectInsert: Record<string, any> = {
         user_id,
         first_name: sanitize(contact.first_name, 100),
@@ -165,6 +166,9 @@ serve(async (req) => {
         sent_to_clay: false,
         status: 'pending',
         personal_id: personalId,
+        // ALWAYS set these from the original research request - they flow through from n8n
+        salesforce_account_id: resolvedSalesforceAccountId || null,
+        salesforce_campaign_id: salesforce_campaign_id || null,
       };
 
       // Add company_research_id if we have it
@@ -175,16 +179,6 @@ serve(async (req) => {
       // Add company_id if we have it
       if (resolvedCompanyId) {
         prospectInsert.company_id = resolvedCompanyId;
-      }
-
-      // Add salesforce_account_id if available
-      if (resolvedSalesforceAccountId) {
-        prospectInsert.salesforce_account_id = resolvedSalesforceAccountId;
-      }
-
-      // Add salesforce_campaign_id if available (for Clay to add to correct campaign)
-      if (salesforce_campaign_id) {
-        prospectInsert.salesforce_campaign_id = salesforce_campaign_id;
       }
 
       const { data: insertedProspect, error: insertError } = await supabase
