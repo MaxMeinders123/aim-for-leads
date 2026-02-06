@@ -28,24 +28,28 @@ serve(async (req) => {
       );
     }
 
-    // Get Salesforce import webhook URL from user_integrations
-    const { data: integrationData } = await supabase
-      .from("user_integrations")
-      .select("salesforce_import_webhook_url")
-      .eq("user_id", user_id)
-      .maybeSingle();
+    // Use webhook URL from request body (hardcoded on frontend) or fall back to user_integrations
+    let webhookUrl = body.webhook_url;
+    if (!webhookUrl) {
+      const { data: integrationData } = await supabase
+        .from("user_integrations")
+        .select("salesforce_import_webhook_url")
+        .eq("user_id", user_id)
+        .maybeSingle();
+      webhookUrl = integrationData?.salesforce_import_webhook_url;
+    }
 
-    if (!integrationData?.salesforce_import_webhook_url) {
+    if (!webhookUrl) {
       return new Response(
-        JSON.stringify({ error: "Salesforce import webhook URL not configured. Please add it in Settings." }),
+        JSON.stringify({ error: "Salesforce import webhook URL not configured." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("[import-salesforce-campaign] Calling n8n webhook:", integrationData.salesforce_import_webhook_url);
+    console.log("[import-salesforce-campaign] Calling n8n webhook:", webhookUrl);
 
     // Call n8n webhook to get accounts from Salesforce
-    const n8nResponse = await fetch(integrationData.salesforce_import_webhook_url, {
+    const n8nResponse = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
