@@ -107,9 +107,21 @@ export default function Research() {
           );
           const webhookUrl = getResolvedWebhookUrl('people_research', userWebhooks);
           const data = await callResearchProxy(webhookUrl, payload);
+
+          // n8n uses backgroundMode on the AI node, so the webhook may respond
+          // before contacts are ready. Check if the response has actual contacts.
           const parsed = data ? (parseAIResponse(data) as PeopleResearchResult) : null;
-          updateCompanyProgress(companyId, { step: 'complete', peopleData: parsed || undefined });
-          toast.success(`Prospect research complete for ${company.name}`);
+          const hasContacts = parsed?.contacts && Array.isArray(parsed.contacts) && parsed.contacts.length > 0;
+
+          if (hasContacts) {
+            updateCompanyProgress(companyId, { step: 'complete', peopleData: parsed || undefined });
+            toast.success(`Prospect research complete for ${company.name}`);
+          } else {
+            // No contacts in response - n8n is processing in the background.
+            // Results will arrive via realtime subscription on prospect_research table.
+            updateCompanyProgress(companyId, { step: 'awaiting_callback' });
+            toast.info(`Prospect research started for ${company.name}. Results will appear automatically.`);
+          }
         } catch (err: unknown) {
           updateCompanyProgress(companyId, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
           toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -223,19 +235,46 @@ export default function Research() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'company_research', filter: `user_id=eq.${user.id}` },
-        (payload) => {
-          const rec = payload.new as { id: string; company_domain: string; raw_data: unknown; status: string };
+        async (payload) => {
+          const rec = payload.new as { id: string; company_domain: string; raw_data: unknown; status: string; company_status: string | null };
           const match = companies.find((c) => {
             const domain = c.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || c.name.toLowerCase().replace(/\s+/g, '');
             return domain === rec.company_domain;
           });
           if (match && rec.status === 'completed') {
+            const companyData = rec.raw_data as CompanyResearchResult | null;
             updateCompanyProgress(match.id, {
               step: 'people',
-              companyData: (rec.raw_data as CompanyResearchResult) || undefined,
+              companyData: companyData || undefined,
               company_research_id: rec.id,
             });
             toast.success(`Company research complete for ${match.name}`);
+
+            // Frontend fallback: auto-trigger prospect research.
+            // The server-side auto-trigger in receive-company-results can be unreliable
+            // (edge function timeouts, network issues), so also trigger from the frontend.
+            const cs = rec.company_status || companyData?.company_status;
+            const stillOperates = (companyData as Record<string, unknown>)?.stillOperatesIndependently === true;
+            const shouldTrigger =
+              cs === COMPANY_STATUSES.OPERATING ||
+              (cs === COMPANY_STATUSES.ACQUIRED && stillOperates) ||
+              cs === COMPANY_STATUSES.RENAMED;
+
+            if (shouldTrigger) {
+              try {
+                const prospectPayload = buildProspectResearchPayload(
+                  selectedCampaign,
+                  match,
+                  companyData,
+                  user.id,
+                  rec.id,
+                );
+                const webhookUrl = getResolvedWebhookUrl('people_research', userWebhooks);
+                callResearchProxy(webhookUrl, prospectPayload).catch(() => {});
+              } catch {
+                // Server-side trigger may still succeed; don't show error
+              }
+            }
           }
         },
       )
@@ -292,7 +331,7 @@ export default function Research() {
       supabase.removeChannel(companyChannel);
       supabase.removeChannel(prospectChannel);
     };
-  }, [user?.id, companies, updateCompanyProgress]);
+  }, [user?.id, companies, updateCompanyProgress, selectedCampaign, userWebhooks]);
 
   // Load existing prospects on mount
   useEffect(() => {
@@ -371,22 +410,23 @@ export default function Research() {
           subtitle={`${completedCount} of ${totalCompanies} companies${selectedCampaign ? ` - ${selectedCampaign.name}` : ''}`}
           backTo={campaignId ? `/companies/${campaignId}` : '/campaigns'}
           actions={
-            isRunning ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setResearchProgress({ isRunning: false });
-                  isProcessingRef.current = false;
-                }}
-              >
-                Stop Research
-              </Button>
-            ) : (
-              <Button onClick={() => navigate(`/contacts/${campaignId}`)}>
+            <div className="flex items-center gap-2">
+              {isRunning && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setResearchProgress({ isRunning: false });
+                    isProcessingRef.current = false;
+                  }}
+                >
+                  Stop Research
+                </Button>
+              )}
+              <Button variant={isRunning ? 'outline' : 'default'} onClick={() => navigate(`/contacts/${campaignId}`)}>
+                <Users className="w-4 h-4 mr-2" />
                 View Contacts
-                <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-            )
+            </div>
           }
         />
 
