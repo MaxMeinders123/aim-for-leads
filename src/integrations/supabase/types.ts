@@ -275,6 +275,7 @@ export type Database = {
       }
       prospect_research: {
         Row: {
+          campaign_id: string | null
           clay_response: Json | null
           company_id: string | null
           company_research_id: string
@@ -301,6 +302,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          campaign_id?: string | null
           clay_response?: Json | null
           company_id?: string | null
           company_research_id: string
@@ -327,6 +329,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          campaign_id?: string | null
           clay_response?: Json | null
           company_id?: string | null
           company_research_id?: string
@@ -353,6 +356,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "prospect_research_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "prospect_research_company_id_fkey"
             columns: ["company_id"]

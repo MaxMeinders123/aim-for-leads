@@ -371,6 +371,18 @@ export async function sendBulkToClay(prospectIds: string[], userId: string) {
 }
 
 // =============================================================================
+// Clay payload preview (for testing)
+// =============================================================================
+
+export async function testClayPayload(userId: string, prospectId?: string) {
+  const { data, error } = await supabase.functions.invoke('test-clay-payload', {
+    body: { user_id: userId, prospect_id: prospectId },
+  });
+  if (error) throw error;
+  return data;
+}
+
+// =============================================================================
 // Company research results
 // =============================================================================
 
