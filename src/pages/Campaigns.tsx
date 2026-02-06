@@ -168,11 +168,11 @@ export default function Campaigns() {
     setIsSaving(true);
     try {
       if (editingId) {
-        const updated = await updateCampaign(editingId, draft);
+        const updated = await updateCampaign(editingId, draft as unknown as Record<string, unknown>);
         setCampaigns(campaigns.map((c) => (c.id === updated.id ? updated : c)));
         toast.success('Campaign updated');
       } else {
-        const created = await createCampaign(user.id, draft);
+        const created = await createCampaign(user.id, draft as unknown as Record<string, unknown>);
         setCampaigns([created, ...campaigns]);
         toast.success('Campaign created');
         navigate(`/companies/${created.id}`);
