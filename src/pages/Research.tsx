@@ -249,34 +249,8 @@ export default function Research() {
               company_research_id: rec.id,
             });
             toast.success(`Company research complete for ${match.name}`);
-
-            // Frontend fallback: auto-trigger prospect research.
-            // The server-side auto-trigger in receive-company-results can be unreliable
-            // (edge function timeouts, network issues), so also trigger from the frontend.
-            const cs = rec.company_status || companyData?.company_status;
-            const stillOperates = companyData && 'stillOperatesIndependently' in companyData 
-              ? companyData.stillOperatesIndependently === true 
-              : false;
-            const shouldTrigger =
-              cs === COMPANY_STATUSES.OPERATING ||
-              (cs === COMPANY_STATUSES.ACQUIRED && stillOperates) ||
-              cs === COMPANY_STATUSES.RENAMED;
-
-            if (shouldTrigger) {
-              try {
-                const prospectPayload = buildProspectResearchPayload(
-                  selectedCampaign,
-                  match,
-                  companyData,
-                  user.id,
-                  rec.id,
-                );
-                const webhookUrl = getResolvedWebhookUrl('people_research', userWebhooks);
-                callResearchProxy(webhookUrl, prospectPayload).catch(() => {});
-              } catch {
-                // Server-side trigger may still succeed; don't show error
-              }
-            }
+            // Prospect research is now triggered server-side in receive-company-results.
+            // No frontend fallback to avoid duplicate triggers.
           }
         },
       )
