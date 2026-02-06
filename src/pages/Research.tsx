@@ -107,9 +107,21 @@ export default function Research() {
           );
           const webhookUrl = getResolvedWebhookUrl('people_research', userWebhooks);
           const data = await callResearchProxy(webhookUrl, payload);
+
+          // n8n uses backgroundMode on the AI node, so the webhook may respond
+          // before contacts are ready. Check if the response has actual contacts.
           const parsed = data ? (parseAIResponse(data) as PeopleResearchResult) : null;
-          updateCompanyProgress(companyId, { step: 'complete', peopleData: parsed || undefined });
-          toast.success(`Prospect research complete for ${company.name}`);
+          const hasContacts = parsed?.contacts && Array.isArray(parsed.contacts) && parsed.contacts.length > 0;
+
+          if (hasContacts) {
+            updateCompanyProgress(companyId, { step: 'complete', peopleData: parsed || undefined });
+            toast.success(`Prospect research complete for ${company.name}`);
+          } else {
+            // No contacts in response - n8n is processing in the background.
+            // Results will arrive via realtime subscription on prospect_research table.
+            updateCompanyProgress(companyId, { step: 'awaiting_callback' });
+            toast.info(`Prospect research started for ${company.name}. Results will appear automatically.`);
+          }
         } catch (err: unknown) {
           updateCompanyProgress(companyId, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
           toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);

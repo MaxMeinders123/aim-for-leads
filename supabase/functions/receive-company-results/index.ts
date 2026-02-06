@@ -256,14 +256,27 @@ serve(async (req) => {
           qualify: true,
         };
 
-        // Trigger prospect webhook - must await to ensure it completes
-        // before the edge function runtime terminates
-        const prospectResponse = await fetch(prospectWebhookUrl, {
+        // Trigger prospect webhook. n8n may take minutes for AI processing,
+        // so we can't fully await the response (edge function would timeout).
+        // Instead, fire the request and wait briefly to ensure it transmits.
+        // The HTTP request body is sent immediately on fetch(), so n8n
+        // receives and processes it independently of our response.
+        const prospectFetch = fetch(prospectWebhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(prospectPayload),
+        }).then(res => {
+          console.log("[receive-company-results] Prospect webhook response:", res.status);
+          return res;
+        }).catch(error => {
+          console.error("[receive-company-results] Failed to trigger prospect research:", error);
         });
-        console.log("[receive-company-results] Prospect webhook response:", prospectResponse.status);
+
+        // Wait up to 10s for n8n to accept the request, then move on
+        await Promise.race([
+          prospectFetch,
+          new Promise(resolve => setTimeout(resolve, 10000)),
+        ]);
 
         console.log("[receive-company-results] Prospect research auto-triggered");
       } catch (triggerError) {
