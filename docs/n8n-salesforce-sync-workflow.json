@@ -1,44 +1,48 @@
 {
-  "name": "Salesforce Contact Sync - SDR Research Tool",
+  "name": "Salesforce Contact Sync (Future - Requires Freddy)",
+  "id": "salesforce-sync-future",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "salesforce-sync",
+        "path": "salesforce-contact-sync",
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-receive-prospect",
-      "name": "Webhook: Receive Prospect Data",
+      "id": "webhook-receive-enriched-prospect",
+      "name": "Webhook: Receive Enriched Prospect",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [250, 100],
-      "webhookId": "a1b2c3d4-e5f6-4789-a1b2-c3d4e5f67890",
-      "description": "Receives enriched prospect data from Lovable application"
+      "webhookId": "salesforce-contact-sync",
+      "description": "Receives enriched prospect data from Lovable app (after Clay enrichment). Body: { prospect_id, first_name, last_name, title, email, phone, mobile, linkedin_url, salesforce_account_id, salesforce_campaign_id }"
     },
     {
       "parameters": {
         "resource": "contact",
         "operation": "query",
-        "sotql": "SELECT Id, Email FROM Contact WHERE Email = '{{ $json.email }}' AND AccountId = '{{ $json.salesforce_account_id }}'",
+        "soql": "=SELECT Id, Email FROM Contact WHERE Email = '{{ $json.body.email }}' AND AccountId = '{{ $json.body.salesforce_account_id }}'",
         "options": {}
       },
-      "id": "salesforce-query-contact",
-      "name": "Salesforce: Query Existing Contact",
+      "id": "sf-check-existing",
+      "name": "Salesforce: Check Existing Contact",
       "type": "n8n-nodes-base.salesforce",
       "typeVersion": 2,
       "position": [550, 100],
       "credentials": {
-        "salesforceOAuth2Api": "salesforce_oauth"
+        "salesforceOAuth2Api": {
+          "id": "Salesforce account 3",
+          "name": "Salesforce account 3"
+        }
       },
-      "description": "Check if Contact already exists in Salesforce with same email + account"
+      "description": "Check if Contact already exists by email + AccountId"
     },
     {
       "parameters": {
         "conditions": {
           "number": [
             {
-              "value1": "{{ $node['salesforce-query-contact'].json.totalSize }}",
+              "value1": "={{ $json.totalSize }}",
               "operation": ">",
               "value2": 0
             }
@@ -50,52 +54,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [850, 100],
-      "description": "Branch: if Contact already exists (totalSize > 0) or create new"
-    },
-    {
-      "parameters": {
-        "fieldMappings": {
-          "mappingFields": [
-            {
-              "fieldName": "contact_id",
-              "fieldValue": "{{ $node['salesforce-query-contact'].json.records[0].Id }}"
-            }
-          ]
-        }
-      },
-      "id": "use-existing-contact",
-      "name": "Set: Use Existing Contact ID",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 1,
-      "position": [1050, 50],
-      "description": "Extract Contact ID from query results"
-    },
-    {
-      "parameters": {
-        "resource": "contact",
-        "operation": "create",
-        "fieldsToSet": "customObject",
-        "fieldsObject": {
-          "FirstName": "{{ $json.first_name }}",
-          "LastName": "{{ $json.last_name }}",
-          "Email": "{{ $json.email }}",
-          "Phone": "{{ $json.phone }}",
-          "MobilePhone": "{{ $json.mobile }}",
-          "Title": "{{ $json.title }}",
-          "AccountId": "{{ $json.salesforce_account_id }}",
-          "LinkedIn__c": "{{ $json.linkedin_url }}"
-        },
-        "options": {}
-      },
-      "id": "salesforce-create-contact",
-      "name": "Salesforce: Create Contact",
-      "type": "n8n-nodes-base.salesforce",
-      "typeVersion": 2,
-      "position": [1050, 150],
-      "credentials": {
-        "salesforceOAuth2Api": "salesforce_oauth"
-      },
-      "description": "Create new Contact in Salesforce (if not exists)"
+      "description": "Branch based on whether contact already exists in Salesforce"
     },
     {
       "parameters": {
@@ -104,17 +63,79 @@
             {
               "id": "contact_id",
               "name": "contact_id",
-              "value": "{{ $node['salesforce-create-contact'].json.id }}",
+              "value": "={{ $json.records[0].Id }}",
               "type": "string"
+            },
+            {
+              "id": "is_duplicate",
+              "name": "is_duplicate",
+              "value": true,
+              "type": "boolean"
             }
           ]
         }
       },
-      "id": "extract-new-contact-id",
+      "id": "use-existing",
+      "name": "Set: Use Existing Contact",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1100, 50],
+      "description": "Contact already exists - use existing ID, mark as duplicate"
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "create",
+        "fieldsToSet": "customObject",
+        "fieldsObject": {
+          "FirstName": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.first_name }}",
+          "LastName": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.last_name }}",
+          "Email": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.email }}",
+          "Phone": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.phone }}",
+          "MobilePhone": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.mobile }}",
+          "Title": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.title }}",
+          "AccountId": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.salesforce_account_id }}",
+          "LinkedIn__c": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.linkedin_url }}"
+        },
+        "options": {}
+      },
+      "id": "sf-create-contact",
+      "name": "Salesforce: Create Contact",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 2,
+      "position": [1100, 150],
+      "credentials": {
+        "salesforceOAuth2Api": {
+          "id": "Salesforce account 3",
+          "name": "Salesforce account 3"
+        }
+      },
+      "description": "Create new Contact in Salesforce with all enriched data"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "contact_id",
+              "name": "contact_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "is_duplicate",
+              "name": "is_duplicate",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "id": "extract-new-id",
       "name": "Set: Extract New Contact ID",
       "type": "n8n-nodes-base.set",
-      "typeVersion": 1,
-      "position": [1300, 150],
+      "typeVersion": 3.4,
+      "position": [1350, 150],
       "description": "Extract newly created Contact ID"
     },
     {
@@ -123,81 +144,52 @@
         "operation": "create",
         "fieldsToSet": "customObject",
         "fieldsObject": {
-          "CampaignId": "{{ $json.salesforce_campaign_id }}",
-          "ContactId": "{{ $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id }}",
+          "CampaignId": "={{ $('Webhook: Receive Enriched Prospect').item.json.body.salesforce_campaign_id }}",
+          "ContactId": "={{ $json.contact_id }}",
           "Status": "Added"
         },
         "options": {}
       },
-      "id": "salesforce-create-campaign-member",
-      "name": "Salesforce: Create CampaignMember",
+      "id": "sf-add-to-campaign",
+      "name": "Salesforce: Add to Campaign",
       "type": "n8n-nodes-base.salesforce",
       "typeVersion": 2,
-      "position": [1400, 100],
+      "position": [1500, 100],
       "credentials": {
-        "salesforceOAuth2Api": "salesforce_oauth"
+        "salesforceOAuth2Api": {
+          "id": "Salesforce account 3",
+          "name": "Salesforce account 3"
+        }
       },
-      "description": "Add Contact to Campaign"
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "={{ ($env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co') }}/functions/v1/update-prospect-salesforce",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  prospect_id: $json.prospect_id,\n  salesforce_contact_id: $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id,\n  salesforce_contact_url: 'https://' + ($env.SF_INSTANCE_URL || 'yourinstance.salesforce.com') + '/' + ($node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id),\n  synced_at: new Date().toISOString(),\n  sync_status: 'success'\n}) }}",
-        "options": {}
-      },
-      "id": "http-update-supabase",
-      "name": "HTTP: Update Supabase Prospect",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [1700, 100],
-      "description": "Update prospect record in Supabase with Salesforce Contact info"
+      "description": "Create CampaignMember to add Contact to the Campaign"
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({\n  status: 'success',\n  contact_id: $node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id,\n  contact_url: 'https://' + ($env.SF_INSTANCE_URL || 'yourinstance.salesforce.com') + '/' + ($node['use-existing-contact'].json.contact_id || $node['extract-new-contact-id'].json.contact_id),\n  campaign_member_id: $node['salesforce-create-campaign-member'].json.id\n}) }}",
+        "responseBody": "={{ JSON.stringify({\n  status: 'success',\n  contact_id: $json.contact_id || $('Set: Use Existing Contact').item.json.contact_id || $('Set: Extract New Contact ID').item.json.contact_id,\n  is_duplicate: $json.is_duplicate || false,\n  campaign_member_id: $json.id,\n  salesforce_url: 'https://engagetech.salesforce.com/' + ($json.contact_id || $('Set: Use Existing Contact').item.json.contact_id || $('Set: Extract New Contact ID').item.json.contact_id)\n}) }}",
         "options": {}
       },
-      "id": "response-success",
+      "id": "respond-success",
       "name": "Respond: Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [2000, 100],
-      "description": "Return success response to Lovable"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({\n  status: 'error',\n  error: $error.message || 'Unknown error',\n  timestamp: new Date().toISOString()\n}) }}",
-        "responseCode": 400,
-        "options": {}
-      },
-      "id": "response-error",
-      "name": "Respond: Error",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [2000, 250],
-      "description": "Return error response to Lovable"
+      "position": [1800, 100],
+      "description": "Returns { status, contact_id, is_duplicate, campaign_member_id, salesforce_url }"
     }
   ],
   "connections": {
-    "webhook-receive-prospect": {
+    "webhook-receive-enriched-prospect": {
       "main": [
         [
           {
-            "node": "salesforce-query-contact",
+            "node": "sf-check-existing",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "salesforce-query-contact": {
+    "sf-check-existing": {
       "main": [
         [
           {
@@ -212,69 +204,58 @@
       "main": [
         [
           {
-            "node": "use-existing-contact",
+            "node": "use-existing",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "salesforce-create-contact",
+            "node": "sf-create-contact",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "use-existing-contact": {
+    "use-existing": {
       "main": [
         [
           {
-            "node": "salesforce-create-campaign-member",
+            "node": "sf-add-to-campaign",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "salesforce-create-contact": {
+    "sf-create-contact": {
       "main": [
         [
           {
-            "node": "extract-new-contact-id",
+            "node": "extract-new-id",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "extract-new-contact-id": {
+    "extract-new-id": {
       "main": [
         [
           {
-            "node": "salesforce-create-campaign-member",
+            "node": "sf-add-to-campaign",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "salesforce-create-campaign-member": {
+    "sf-add-to-campaign": {
       "main": [
         [
           {
-            "node": "http-update-supabase",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "http-update-supabase": {
-      "main": [
-        [
-          {
-            "node": "response-success",
+            "node": "respond-success",
             "type": "main",
             "index": 0
           }
@@ -282,15 +263,16 @@
       ]
     }
   },
-  "active": true,
+  "active": false,
   "settings": {
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "1",
+  "versionId": "2",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "salesforce-sync-workflow-v1"
+    "instanceId": "salesforce-sync-future"
   },
-  "tags": []
+  "tags": ["salesforce", "sync", "future"],
+  "_note": "This workflow is NOT ACTIVE. It requires Freddy to set up a Connected App in Salesforce first. See SLACK-MESSAGE-FREDDY.md for details."
 }

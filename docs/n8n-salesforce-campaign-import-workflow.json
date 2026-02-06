@@ -1,5 +1,6 @@
 {
-  "name": "Salesforce Campaign Import - SDR Research Tool",
+  "name": "Salesforce Campaign Import",
+  "id": "YNsWb78hzRAhDWLR",
   "nodes": [
     {
       "parameters": {
@@ -9,71 +10,56 @@
         "options": {}
       },
       "id": "webhook-campaign-import",
-      "name": "Webhook: Start Campaign Import",
+      "name": "Webhook: Campaign Import",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [250, 300],
-      "webhookId": "061fb742-74a4-47eb-8dd7-12bd6fade787",
-      "description": "Receives campaign_id from Lovable app"
+      "webhookId": "salesforce-campaign-import",
+      "description": "POST from Lovable app via import-salesforce-campaign edge function. Body: { campaign_id, user_id, salesforce_campaign_id }"
     },
     {
       "parameters": {
         "resource": "campaignMember",
         "operation": "query",
-        "soql": "=SELECT Id, ContactId, Status, Account.Id, Account.Name, Account.Website, Account.LinkedIn__c FROM CampaignMember WHERE CampaignId = '{{ $json.body.campaign_id }}' AND Status = 'Prospecting'",
+        "soql": "=SELECT Id, ContactId, Status, Prospecting_Status__c, Account.Id, Account.Name, Account.Website FROM CampaignMember WHERE CampaignId = '{{ $json.body.salesforce_campaign_id }}' AND Prospecting_Status__c = 'Target Account'",
         "options": {}
       },
-      "id": "salesforce-query-campaign-members",
-      "name": "Salesforce: Query Campaign Members",
+      "id": "salesforce-query",
+      "name": "Salesforce: Query Target Accounts",
       "type": "n8n-nodes-base.salesforce",
       "typeVersion": 2,
       "position": [550, 300],
       "credentials": {
-        "salesforceOAuth2Api": "salesforce_oauth"
+        "salesforceOAuth2Api": {
+          "id": "Salesforce account 3",
+          "name": "Salesforce account 3"
+        }
       },
-      "description": "Get all CampaignMembers with Prospecting status"
+      "description": "SOQL query for CampaignMembers with Prospecting_Status__c = 'Target Account'"
     },
     {
       "parameters": {
-        "jsCode": "// Extract unique companies from CampaignMembers\nconst campaignMembers = $input.item.json.records || [];\nconst campaign_id = $('Webhook: Start Campaign Import').item.json.body.campaign_id;\n\n// Create a map to deduplicate companies by Account.Id\nconst companiesMap = new Map();\n\nfor (const member of campaignMembers) {\n  const account = member.Account;\n  if (!account || !account.Id) continue;\n  \n  // Only add if not already in map (deduplicate)\n  if (!companiesMap.has(account.Id)) {\n    companiesMap.set(account.Id, {\n      salesforce_account_id: account.Id,\n      company_name: account.Name || null,\n      website: account.Website || null,\n      linkedin: account.LinkedIn__c || null,\n      campaign_id: campaign_id,\n      prospecting_status: 'Prospecting'\n    });\n  }\n}\n\n// Convert map to array\nconst companies = Array.from(companiesMap.values());\n\nconsole.log(`Found ${companies.length} unique companies from ${campaignMembers.length} campaign members`);\n\nreturn companies.map(company => ({ json: company }));"
+        "jsCode": "// Extract unique companies from CampaignMembers\nconst campaignMembers = $input.item.json.records || [];\n\n// Deduplicate by Account.Id\nconst companiesMap = new Map();\n\nfor (const member of campaignMembers) {\n  const account = member.Account;\n  if (!account || !account.Id) continue;\n  \n  if (!companiesMap.has(account.Id)) {\n    companiesMap.set(account.Id, {\n      salesforce_account_id: account.Id,\n      company_name: account.Name || null,\n      website: account.Website || null\n    });\n  }\n}\n\nconst companies = Array.from(companiesMap.values());\nreturn [{ json: { accounts: companies } }];"
       },
-      "id": "extract-unique-companies",
+      "id": "extract-companies",
       "name": "Code: Extract Unique Companies",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [850, 300],
-      "description": "Deduplicate companies from CampaignMembers"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ ($env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co') }}/functions/v1/save-campaign-companies",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  campaign_id: $('Webhook: Start Campaign Import').item.json.body.campaign_id,\n  user_id: $('Webhook: Start Campaign Import').item.json.body.user_id,\n  companies: $items().map(item => item.json)\n}) }}",
-        "options": {}
-      },
-      "id": "http-save-companies",
-      "name": "HTTP: Save Companies to Supabase",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [1150, 300],
-      "description": "Save company list to Supabase for user selection"
+      "description": "Deduplicates companies by Account.Id, returns { accounts: [...] }"
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({\n  status: 'success',\n  campaign_id: $('Webhook: Start Campaign Import').item.json.body.campaign_id,\n  total_companies: $('Code: Extract Unique Companies').all().length,\n  message: 'Campaign companies imported. Ready for selection.'\n}) }}",
+        "responseBody": "={{ JSON.stringify($json) }}",
         "options": {}
       },
-      "id": "response-success",
-      "name": "Respond: Success",
+      "id": "respond-success",
+      "name": "Respond: Return Accounts",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1450, 300],
-      "description": "Return success to Lovable app"
+      "position": [1150, 300],
+      "description": "Returns { accounts: [{ salesforce_account_id, company_name, website }] } to edge function"
     }
   ],
   "connections": {
@@ -81,40 +67,29 @@
       "main": [
         [
           {
-            "node": "salesforce-query-campaign-members",
+            "node": "salesforce-query",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "salesforce-query-campaign-members": {
+    "salesforce-query": {
       "main": [
         [
           {
-            "node": "extract-unique-companies",
+            "node": "extract-companies",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "extract-unique-companies": {
+    "extract-companies": {
       "main": [
         [
           {
-            "node": "http-save-companies",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "http-save-companies": {
-      "main": [
-        [
-          {
-            "node": "response-success",
+            "node": "respond-success",
             "type": "main",
             "index": 0
           }
@@ -130,10 +105,10 @@
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "1",
+  "versionId": "2",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "salesforce-campaign-import-workflow-v1"
+    "instanceId": "YNsWb78hzRAhDWLR"
   },
-  "tags": []
+  "tags": ["salesforce", "import"]
 }
