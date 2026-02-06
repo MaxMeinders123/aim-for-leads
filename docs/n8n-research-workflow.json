@@ -1,0 +1,249 @@
+{
+  "name": "Research Workflow (Async Mode)",
+  "id": "WmoDoEmR8f3mbuFF",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "f545849d-1d19-43e7-9dfb-11e34166907f",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-company-research",
+      "name": "Webhook: Company Research",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [250, 200],
+      "webhookId": "f545849d-1d19-43e7-9dfb-11e34166907f",
+      "description": "Receives company research request. Body includes: user_id, campaign_id, company_domain, campaign context, company details"
+    },
+    {
+      "parameters": {
+        "model": "gpt-5.2",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a B2B company research analyst. Your job is to verify company status and gather intelligence.\n\nRESPOND WITH JSON ONLY:\n{\n  \"company_status\": \"Operating\" | \"Acquired\" | \"Renamed\" | \"Bankrupt\" | \"Not_Found\",\n  \"acquiredBy\": \"string or null\",\n  \"effectiveDate\": \"string or null\",\n  \"stillOperatesIndependently\": true/false,\n  \"cloud_preference\": { \"provider\": \"AWS|Azure|GCP|Other\", \"confidence\": 0-100 },\n  \"summary\": \"brief company summary\"\n}"
+            },
+            {
+              "role": "user",
+              "content": "=Research this company:\nName: {{ $json.body.company.name }}\nWebsite: {{ $json.body.company.website }}\nLinkedIn: {{ $json.body.company.linkedin }}\n\nCampaign Context:\nProduct: {{ $json.body.campaign.product }}\nRegion: {{ $json.body.campaign.targetRegion }}\nTech Focus: {{ $json.body.campaign.techFocus }}\n\nDetermine:\n1. Is this company still operating independently?\n2. Was it acquired, renamed, or went bankrupt?\n3. What cloud provider do they likely use?\n4. Brief company summary relevant to selling {{ $json.body.campaign.product }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3
+        },
+        "webSearchOptions": {
+          "enabled": true,
+          "search_context_size": "low"
+        }
+      },
+      "id": "openai-company-check",
+      "name": "OpenAI: Company Status Check",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [550, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "OpenAi account 3",
+          "name": "OpenAi account 3"
+        }
+      },
+      "description": "GPT-5.2 with web search (low context) - validates company status, cloud preference"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and format for callback\nconst aiOutput = $input.item.json;\nlet parsed;\ntry {\n  const text = aiOutput.output?.[0]?.content?.[0]?.text || aiOutput.text || JSON.stringify(aiOutput);\n  const jsonMatch = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[1].trim() : text);\n} catch {\n  parsed = { company_status: 'Not_Found', summary: 'Failed to parse AI response' };\n}\n\nreturn [{ json: parsed }];"
+      },
+      "id": "format-company-result",
+      "name": "Code: Format Company Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 200],
+      "description": "Parses GPT response JSON, returns structured company data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $('Webhook: Company Research').item.json.body.user_id,\n  campaign_id: $('Webhook: Company Research').item.json.body.campaign_id,\n  company_domain: $('Webhook: Company Research').item.json.body.company_domain,\n  salesforce_account_id: $('Webhook: Company Research').item.json.body.salesforce_account_id,\n  result: $json\n}) }}",
+        "options": {}
+      },
+      "id": "callback-company-results",
+      "name": "HTTP: Callback to receive-company-results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1150, 200],
+      "description": "POSTs result to Supabase edge function which saves to company_research table"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-prospect-research",
+      "name": "Webhook: Prospect Research",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [250, 500],
+      "webhookId": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+      "description": "Receives prospect research request. Body includes: user_id, campaign context, company data, company_research_id"
+    },
+    {
+      "parameters": {
+        "model": "gpt-5.2",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a B2B prospect researcher. Find decision-makers at the given company who would be relevant for the sales campaign.\n\nRESPOND WITH JSON ONLY:\n{\n  \"status\": \"completed\",\n  \"company\": \"company name\",\n  \"contacts\": [\n    {\n      \"first_name\": \"string\",\n      \"last_name\": \"string\",\n      \"job_title\": \"string\",\n      \"linkedin\": \"full LinkedIn URL or empty string\",\n      \"priority\": \"High\" | \"Medium\" | \"Low\",\n      \"priority_reason\": \"why this person is relevant\",\n      \"pitch_type\": \"Technical\" | \"Business\" | \"Executive\"\n    }\n  ]\n}\n\nFind 3-7 contacts. Prioritize people whose title matches the target personas."
+            },
+            {
+              "role": "user",
+              "content": "=Find prospects at {{ $json.body.company.name }} ({{ $json.body.company.website }})\n\nCampaign: {{ $json.body.campaign.campaignName }}\nProduct: {{ $json.body.campaign.product }}\nRegion: {{ $json.body.campaign.targetRegion }}\nTarget Titles: {{ $json.body.campaign.targetTitles }}\nPersonas: {{ $json.body.campaign.targetPersonas }}\nPrimary Angle: {{ $json.body.campaign.primaryAngle }}\nPain Points: {{ $json.body.campaign.painPoints }}\nTech Focus: {{ $json.body.campaign.techFocus }}\n\nCompany Research:\n{{ JSON.stringify($json.body.companyResearch) }}\n\nFind relevant decision-makers at this company who would care about {{ $json.body.campaign.product }}. Focus on people in {{ $json.body.campaign.targetRegion }} if possible."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.4
+        },
+        "webSearchOptions": {
+          "enabled": true,
+          "search_context_size": "medium"
+        },
+        "mode": "background"
+      },
+      "id": "openai-prospect-search",
+      "name": "OpenAI: Prospect Search",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [550, 500],
+      "credentials": {
+        "openAiApi": {
+          "id": "OpenAi account 3",
+          "name": "OpenAi account 3"
+        }
+      },
+      "description": "GPT-5.2 with web search (medium context, background mode) - finds decision-makers"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse prospect research response\nconst aiOutput = $input.item.json;\nlet parsed;\ntry {\n  const text = aiOutput.output?.[0]?.content?.[0]?.text || aiOutput.text || JSON.stringify(aiOutput);\n  const jsonMatch = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[1].trim() : text);\n} catch {\n  parsed = { status: 'error', contacts: [] };\n}\n\nreturn [{ json: parsed }];"
+      },
+      "id": "format-prospect-result",
+      "name": "Code: Format Prospect Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 500],
+      "description": "Parses GPT response, extracts contacts array"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $('Webhook: Prospect Research').item.json.body.user_id,\n  campaign_id: $('Webhook: Prospect Research').item.json.body.campaign_id,\n  company_research_id: $('Webhook: Prospect Research').item.json.body.company_research_id,\n  company_domain: $('Webhook: Prospect Research').item.json.body.company_domain,\n  result: $json\n}) }}",
+        "options": {}
+      },
+      "id": "callback-prospect-results",
+      "name": "HTTP: Callback to receive-prospect-results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1150, 500],
+      "description": "POSTs result to Supabase edge function which saves to prospect_research table"
+    }
+  ],
+  "connections": {
+    "webhook-company-research": {
+      "main": [
+        [
+          {
+            "node": "openai-company-check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "openai-company-check": {
+      "main": [
+        [
+          {
+            "node": "format-company-result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format-company-result": {
+      "main": [
+        [
+          {
+            "node": "callback-company-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "webhook-prospect-research": {
+      "main": [
+        [
+          {
+            "node": "openai-prospect-search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "openai-prospect-search": {
+      "main": [
+        [
+          {
+            "node": "format-prospect-result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format-prospect-result": {
+      "main": [
+        [
+          {
+            "node": "callback-prospect-results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "WmoDoEmR8f3mbuFF"
+  },
+  "tags": ["research", "ai"]
+}
