@@ -1,32 +1,115 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut } from 'lucide-react';
+import { LogOut, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
 import { WEBHOOKS } from '@/lib/constants';
+import { fetchUserIntegrations, updateUserIntegrations, testWebhook } from '@/services/api';
+import { toast } from 'sonner';
+
+type WebhookKey = 'salesforce_import_webhook_url' | 'company_research_webhook_url' | 'people_research_webhook_url' | 'clay_webhook_url';
+
+interface WebhookConfig {
+  key: WebhookKey;
+  label: string;
+  description: string;
+  placeholder: string;
+}
+
+const WEBHOOK_CONFIGS: WebhookConfig[] = [
+  {
+    key: 'salesforce_import_webhook_url',
+    label: 'Salesforce Campaign Import (n8n)',
+    description: 'Fetches accounts from a Salesforce Campaign',
+    placeholder: WEBHOOKS.SALESFORCE_IMPORT,
+  },
+  {
+    key: 'company_research_webhook_url',
+    label: 'Company Research (n8n)',
+    description: 'Validates company status (Operating/Acquired/Bankrupt)',
+    placeholder: WEBHOOKS.COMPANY_RESEARCH,
+  },
+  {
+    key: 'people_research_webhook_url',
+    label: 'Prospect Research (n8n)',
+    description: 'Finds decision-makers at company',
+    placeholder: WEBHOOKS.PROSPECT_RESEARCH,
+  },
+  {
+    key: 'clay_webhook_url',
+    label: 'Clay Integration',
+    description: 'Enriches prospects with email/phone',
+    placeholder: 'https://clay.com/your-webhook-url',
+  },
+];
 
 export default function Settings() {
   const navigate = useNavigate();
   const { user, integrations, setIntegrations, setUser } = useAppStore();
 
+  const [webhooks, setWebhooks] = useState<Record<WebhookKey, string>>({
+    salesforce_import_webhook_url: '',
+    company_research_webhook_url: '',
+    people_research_webhook_url: '',
+    clay_webhook_url: '',
+  });
+  const [testingWebhook, setTestingWebhook] = useState<WebhookKey | null>(null);
+  const [testResults, setTestResults] = useState<Record<WebhookKey, 'success' | 'error' | null>>({
+    salesforce_import_webhook_url: null,
+    company_research_webhook_url: null,
+    people_research_webhook_url: null,
+    clay_webhook_url: null,
+  });
+  const [savingWebhook, setSavingWebhook] = useState<WebhookKey | null>(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     const loadIntegrations = async () => {
       if (!user) return;
-      const { data } = await supabase
-        .from('user_integrations')
-        .select('dark_mode, sound_effects')
-        .eq('user_id', user.id)
-        .single();
-      if (data) {
+      try {
+        const data = await fetchUserIntegrations(user.id);
         setIntegrations({
           dark_mode: data.dark_mode || false,
           sound_effects: data.sound_effects !== false,
+          clay_webhook_url: data.clay_webhook_url,
+          company_research_webhook_url: data.company_research_webhook_url,
+          people_research_webhook_url: data.people_research_webhook_url,
+          salesforce_import_webhook_url: data.salesforce_import_webhook_url,
         });
+        setWebhooks({
+          salesforce_import_webhook_url: data.salesforce_import_webhook_url || '',
+          company_research_webhook_url: data.company_research_webhook_url || '',
+          people_research_webhook_url: data.people_research_webhook_url || '',
+          clay_webhook_url: data.clay_webhook_url || '',
+        });
+      } catch {
+        // Fallback to direct query if function fails
+        const { data } = await supabase
+          .from('user_integrations')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+        if (data) {
+          setIntegrations({
+            dark_mode: data.dark_mode || false,
+            sound_effects: data.sound_effects !== false,
+          });
+          setWebhooks({
+            salesforce_import_webhook_url: data.salesforce_import_webhook_url || '',
+            company_research_webhook_url: data.company_research_webhook_url || '',
+            people_research_webhook_url: data.people_research_webhook_url || '',
+            clay_webhook_url: data.clay_webhook_url || '',
+          });
+        }
+      } finally {
+        setLoading(false);
       }
     };
     loadIntegrations();
@@ -44,6 +127,53 @@ export default function Settings() {
     setIntegrations({ sound_effects: enabled });
     if (user) {
       await supabase.from('user_integrations').update({ sound_effects: enabled }).eq('user_id', user.id);
+    }
+  };
+
+  const handleWebhookChange = (key: WebhookKey, value: string) => {
+    setWebhooks((prev) => ({ ...prev, [key]: value }));
+    // Clear test result when URL changes
+    setTestResults((prev) => ({ ...prev, [key]: null }));
+  };
+
+  const handleTestWebhook = async (key: WebhookKey) => {
+    const url = webhooks[key];
+    if (!url) {
+      toast.error('Please enter a webhook URL first');
+      return;
+    }
+
+    setTestingWebhook(key);
+    setTestResults((prev) => ({ ...prev, [key]: null }));
+
+    try {
+      const result = await testWebhook(url);
+      setTestResults((prev) => ({ ...prev, [key]: result.success ? 'success' : 'error' }));
+      if (result.success) {
+        toast.success('Webhook is reachable!');
+      } else {
+        toast.error(result.message || 'Webhook test failed');
+      }
+    } catch (err) {
+      setTestResults((prev) => ({ ...prev, [key]: 'error' }));
+      toast.error(err instanceof Error ? err.message : 'Test failed');
+    } finally {
+      setTestingWebhook(null);
+    }
+  };
+
+  const handleSaveWebhook = async (key: WebhookKey) => {
+    if (!user) return;
+
+    setSavingWebhook(key);
+    try {
+      await updateUserIntegrations(user.id, { [key]: webhooks[key] || null });
+      setIntegrations({ [key]: webhooks[key] || undefined });
+      toast.success('Webhook URL saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingWebhook(null);
     }
   };
 
@@ -79,30 +209,75 @@ export default function Settings() {
               </div>
             </div>
 
-            {/* Webhook Configuration (read-only info) */}
+            {/* Webhook Configuration */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Webhook Configuration
               </h3>
               <p className="text-sm text-muted-foreground">
-                Webhook URLs are configured in the codebase. Current endpoints:
+                Configure your n8n and Clay webhook URLs. Test each webhook before saving to verify connectivity.
               </p>
-              <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-3">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Salesforce Import</p>
-                  <p className="text-sm font-mono text-foreground break-all">{WEBHOOKS.SALESFORCE_IMPORT}</p>
+
+              {loading ? (
+                <div className="p-4 rounded-xl border border-border bg-muted/20 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Company Research</p>
-                  <p className="text-sm font-mono text-foreground break-all">{WEBHOOKS.COMPANY_RESEARCH}</p>
+              ) : (
+                <div className="space-y-4">
+                  {WEBHOOK_CONFIGS.map((config) => (
+                    <div key={config.key} className="p-4 rounded-xl border border-border bg-muted/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor={config.key} className="font-medium text-foreground">
+                          {config.label}
+                        </Label>
+                        {testResults[config.key] === 'success' && (
+                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        )}
+                        {testResults[config.key] === 'error' && (
+                          <XCircle className="w-4 h-4 text-destructive" />
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{config.description}</p>
+                      <div className="flex gap-2">
+                        <Input
+                          id={config.key}
+                          type="url"
+                          value={webhooks[config.key]}
+                          onChange={(e) => handleWebhookChange(config.key, e.target.value)}
+                          placeholder={config.placeholder}
+                          className="flex-1 font-mono text-sm"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleTestWebhook(config.key)}
+                          disabled={testingWebhook === config.key || !webhooks[config.key]}
+                        >
+                          {testingWebhook === config.key ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            'Test'
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleSaveWebhook(config.key)}
+                          disabled={savingWebhook === config.key}
+                        >
+                          {savingWebhook === config.key ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            'Save'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Prospect Research</p>
-                  <p className="text-sm font-mono text-foreground break-all">{WEBHOOKS.PROSPECT_RESEARCH}</p>
-                </div>
-              </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
-                To change these URLs, update <code className="bg-muted px-1 py-0.5 rounded">src/lib/constants.ts</code>
+                Leave empty to use default URLs from <code className="bg-muted px-1 py-0.5 rounded">src/lib/constants.ts</code>
               </p>
             </div>
 

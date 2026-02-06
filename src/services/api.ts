@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { WEBHOOKS } from '@/lib/constants';
-import type { Campaign, Company } from '@/stores/appStore';
+import type { Campaign, Company, UserIntegrations } from '@/stores/appStore';
 
 // =============================================================================
 // Supabase API helpers
@@ -99,18 +99,90 @@ export async function importSalesforceCompanies(
   userId: string,
   campaignId: string,
   salesforceCampaignId: string,
+  customWebhookUrl?: string,
 ) {
+  const webhookUrl = customWebhookUrl || WEBHOOKS.SALESFORCE_IMPORT;
   const { data, error } = await supabase.functions.invoke('import-salesforce-campaign', {
     body: {
       salesforce_campaign_id: salesforceCampaignId,
       campaign_id: campaignId,
       user_id: userId,
-      webhook_url: WEBHOOKS.SALESFORCE_IMPORT,
+      webhook_url: webhookUrl,
     },
   });
   if (error) throw error;
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+// =============================================================================
+// User Integrations (webhook URLs)
+// =============================================================================
+
+export async function fetchUserIntegrations(userId: string): Promise<Partial<UserIntegrations>> {
+  const { data, error } = await supabase
+    .from('user_integrations')
+    .select('dark_mode, sound_effects, clay_webhook_url, company_research_webhook_url, people_research_webhook_url, salesforce_import_webhook_url')
+    .eq('user_id', userId)
+    .single();
+  if (error) throw error;
+  return {
+    dark_mode: data?.dark_mode ?? false,
+    sound_effects: data?.sound_effects ?? true,
+    clay_webhook_url: data?.clay_webhook_url ?? undefined,
+    company_research_webhook_url: data?.company_research_webhook_url ?? undefined,
+    people_research_webhook_url: data?.people_research_webhook_url ?? undefined,
+    salesforce_import_webhook_url: data?.salesforce_import_webhook_url ?? undefined,
+  };
+}
+
+export async function updateUserIntegrations(
+  userId: string,
+  updates: Partial<Pick<UserIntegrations, 'clay_webhook_url' | 'company_research_webhook_url' | 'people_research_webhook_url' | 'salesforce_import_webhook_url'>>,
+) {
+  const { data, error } = await supabase
+    .from('user_integrations')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function testWebhook(url: string): Promise<{ success: boolean; message: string }> {
+  const { data, error } = await supabase.functions.invoke('test-webhook', {
+    body: { url },
+  });
+  if (error) {
+    return { success: false, message: error.message || 'Test failed' };
+  }
+  return { success: data?.success ?? false, message: data?.message ?? 'Unknown result' };
+}
+
+export function getResolvedWebhookUrl(
+  webhookType: 'company_research' | 'people_research' | 'salesforce_import' | 'clay',
+  integrations?: Partial<UserIntegrations>,
+): string {
+  if (!integrations) {
+    switch (webhookType) {
+      case 'company_research': return WEBHOOKS.COMPANY_RESEARCH;
+      case 'people_research': return WEBHOOKS.PROSPECT_RESEARCH;
+      case 'salesforce_import': return WEBHOOKS.SALESFORCE_IMPORT;
+      case 'clay': return '';
+    }
+  }
+
+  switch (webhookType) {
+    case 'company_research':
+      return integrations.company_research_webhook_url || WEBHOOKS.COMPANY_RESEARCH;
+    case 'people_research':
+      return integrations.people_research_webhook_url || WEBHOOKS.PROSPECT_RESEARCH;
+    case 'salesforce_import':
+      return integrations.salesforce_import_webhook_url || WEBHOOKS.SALESFORCE_IMPORT;
+    case 'clay':
+      return integrations.clay_webhook_url || '';
+  }
 }
 
 // =============================================================================
