@@ -22,12 +22,25 @@ serve(async (req) => {
     // Extract fields - support multiple formats from n8n
     const {
       user_id,
-      company_domain,
+      company_domain: raw_company_domain,
       campaign_id,
       salesforce_account_id,
       status,
       error_message
     } = body;
+
+    // Clean the domain - remove protocol, www, paths, query params
+    let company_domain = raw_company_domain;
+    if (company_domain && typeof company_domain === 'string') {
+      company_domain = company_domain
+        .replace(/^https?:\/\//, '')    // Remove http:// or https://
+        .replace(/^www\./, '')          // Remove www.
+        .split('?')[0]                  // Remove query params
+        .split('/')[0]                  // Remove path
+        .toLowerCase()
+        .trim();
+    }
+
     const rawText = body.company || body[" company"] || body.text;
 
     // Parse raw LLM text (may have ```json fences) into structured JSON
