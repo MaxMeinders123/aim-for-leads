@@ -46,6 +46,7 @@ export interface Contact {
 export interface UserIntegrations {
   dark_mode: boolean;
   sound_effects: boolean;
+  clay_webhook_url?: string;
 }
 
 export interface CampaignDraft {

@@ -34,7 +34,7 @@ export async function fetchCampaigns() {
 export async function createCampaign(userId: string, draft: Record<string, unknown>) {
   const { data, error } = await supabase
     .from('campaigns')
-    .insert({ user_id: userId, ...draft })
+    .insert({ ...draft, user_id: userId, name: draft.name as string })
     .select()
     .single();
   if (error) throw error;
