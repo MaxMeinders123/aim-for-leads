@@ -21,9 +21,10 @@ serve(async (req) => {
 
     const {
       user_id,
+      campaign_id,
       company_domain,
       company_research_id,
-      company_id, // New: direct company_id from companies table
+      company_id, // direct company_id from companies table
       salesforce_account_id,
       salesforce_campaign_id,
       research_result_id,
@@ -114,16 +115,21 @@ serve(async (req) => {
       }
     }
 
-    // Look up company from companies table if we have company_id
-    if (resolvedCompanyId && !resolvedSalesforceAccountId) {
+    // Look up company from companies table to get all Salesforce and campaign IDs
+    let resolvedCampaignId = campaign_id;
+    let resolvedSalesforceCampaignId = salesforce_campaign_id;
+
+    if (resolvedCompanyId) {
       const { data: company } = await supabase
         .from("companies")
-        .select("id, salesforce_account_id")
+        .select("id, salesforce_account_id, campaign_id, salesforce_campaign_id")
         .eq("id", resolvedCompanyId)
         .single();
 
       if (company) {
-        resolvedSalesforceAccountId = company.salesforce_account_id;
+        if (!resolvedSalesforceAccountId) resolvedSalesforceAccountId = company.salesforce_account_id;
+        if (!resolvedCampaignId) resolvedCampaignId = company.campaign_id;
+        if (!resolvedSalesforceCampaignId) resolvedSalesforceCampaignId = company.salesforce_campaign_id;
       }
     }
 
@@ -166,9 +172,9 @@ serve(async (req) => {
         sent_to_clay: false,
         status: 'pending',
         personal_id: personalId,
-        // ALWAYS set these from the original research request - they flow through from n8n
+        // ALWAYS set these from resolved values (request or companies table lookup)
         salesforce_account_id: resolvedSalesforceAccountId || null,
-        salesforce_campaign_id: salesforce_campaign_id || null,
+        salesforce_campaign_id: resolvedSalesforceCampaignId || null,
       };
 
       // Add company_research_id if we have it
@@ -179,6 +185,11 @@ serve(async (req) => {
       // Add company_id if we have it
       if (resolvedCompanyId) {
         prospectInsert.company_id = resolvedCompanyId;
+      }
+
+      // Add campaign_id if we have it
+      if (resolvedCampaignId) {
+        prospectInsert.campaign_id = resolvedCampaignId;
       }
 
       const { data: insertedProspect, error: insertError } = await supabase

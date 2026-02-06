@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
 import { WEBHOOKS } from '@/lib/constants';
-import { fetchUserIntegrations, updateUserIntegrations, testWebhook } from '@/services/api';
+import { fetchUserIntegrations, updateUserIntegrations, testWebhook, testClayPayload } from '@/services/api';
 import { toast } from 'sonner';
 
 type WebhookKey = 'salesforce_import_webhook_url' | 'company_research_webhook_url' | 'people_research_webhook_url' | 'clay_webhook_url';
@@ -69,6 +69,8 @@ export default function Settings() {
   });
   const [savingWebhook, setSavingWebhook] = useState<WebhookKey | null>(null);
   const [loading, setLoading] = useState(true);
+  const [testingClayPayload, setTestingClayPayload] = useState(false);
+  const [clayPayloadResult, setClayPayloadResult] = useState<object | null>(null);
 
   useEffect(() => {
     const loadIntegrations = async () => {
@@ -183,6 +185,21 @@ export default function Settings() {
     navigate('/');
   };
 
+  const handleTestClayPayload = async () => {
+    if (!user) return;
+    setTestingClayPayload(true);
+    setClayPayloadResult(null);
+    try {
+      const result = await testClayPayload(user.id);
+      setClayPayloadResult(result);
+      toast.success('Clay payload preview loaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to get payload preview');
+    } finally {
+      setTestingClayPayload(false);
+    }
+  };
+
   const getInitials = (name?: string, email?: string) => {
     if (name) return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
     if (email) return email.slice(0, 2).toUpperCase();
@@ -279,6 +296,35 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 Leave empty to use default URLs from <code className="bg-muted px-1 py-0.5 rounded">src/lib/constants.ts</code>
               </p>
+
+              {/* Clay Payload Test */}
+              <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-foreground">Test Clay Payload</p>
+                    <p className="text-xs text-muted-foreground">
+                      Preview the exact payload that would be sent to Clay for your most recent prospect
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestClayPayload}
+                    disabled={testingClayPayload}
+                  >
+                    {testingClayPayload ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      'Preview Payload'
+                    )}
+                  </Button>
+                </div>
+                {clayPayloadResult && (
+                  <pre className="p-3 rounded-lg bg-background border border-border text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto">
+                    {JSON.stringify(clayPayloadResult, null, 2)}
+                  </pre>
+                )}
+              </div>
             </div>
 
             {/* Preferences */}
