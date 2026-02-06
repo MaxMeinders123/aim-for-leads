@@ -31,8 +31,9 @@ serve(async (req) => {
     const rawText = body.company || body[" company"] || body.text;
 
     // Parse raw LLM text (may have ```json fences) into structured JSON
-    const parseTextToJson = (rawText?: string): any => {
+    const parseTextToJson = (rawText?: string | object): any => {
       if (!rawText) return null;
+      if (typeof rawText === 'object') return rawText;
       const cleaned = rawText
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
