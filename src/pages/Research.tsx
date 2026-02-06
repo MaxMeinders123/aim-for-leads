@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useAppStore, type Campaign, type Company, type CompanyResearchResult, type PeopleResearchResult, type CompanyResearchProgress, type ResearchContact, type Contact } from '@/stores/appStore';
+import { useAppStore, type Campaign, type Company, type CompanyResearchResult, type PeopleResearchResult, type CompanyResearchProgress, type ResearchContact, type Contact, type UserIntegrations } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
 import { WEBHOOKS, COMPANY_STATUSES } from '@/lib/constants';
-import { callResearchProxy, buildCompanyResearchPayload, buildProspectResearchPayload, parseAIResponse } from '@/services/api';
+import { callResearchProxy, buildCompanyResearchPayload, buildProspectResearchPayload, parseAIResponse, fetchUserIntegrations, getResolvedWebhookUrl } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -32,7 +32,21 @@ export default function Research() {
   const { isRunning, totalCompanies, companiesProgress } = researchProgress;
   const isProcessingRef = useRef(false);
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
+  const [userWebhooks, setUserWebhooks] = useState<Partial<UserIntegrations>>({});
 
+  // Load user webhook configuration
+  useEffect(() => {
+    const loadWebhooks = async () => {
+      if (!user?.id) return;
+      try {
+        const integrations = await fetchUserIntegrations(user.id);
+        setUserWebhooks(integrations);
+      } catch {
+        // Use defaults on error
+      }
+    };
+    loadWebhooks();
+  }, [user?.id]);
   // Set selected campaign from URL
   useEffect(() => {
     if (campaignId && campaigns.length > 0 && !selectedCampaign) {
@@ -65,7 +79,8 @@ export default function Research() {
         updateCompanyProgress(companyId, { step: 'company', error: undefined });
         try {
           const payload = buildCompanyResearchPayload(selectedCampaign, company, user.id);
-          const data = await callResearchProxy(WEBHOOKS.COMPANY_RESEARCH, payload);
+          const webhookUrl = getResolvedWebhookUrl('company_research', userWebhooks);
+          const data = await callResearchProxy(webhookUrl, payload);
           const parsed = data ? (parseAIResponse(data) as CompanyResearchResult) : null;
           updateCompanyProgress(companyId, { step: 'people', companyData: parsed || undefined });
           toast.success(`Company research complete for ${company.name}`);
@@ -90,7 +105,8 @@ export default function Research() {
             user.id,
             existing.company_research_id,
           );
-          const data = await callResearchProxy(WEBHOOKS.PROSPECT_RESEARCH, payload);
+          const webhookUrl = getResolvedWebhookUrl('people_research', userWebhooks);
+          const data = await callResearchProxy(webhookUrl, payload);
           const parsed = data ? (parseAIResponse(data) as PeopleResearchResult) : null;
           updateCompanyProgress(companyId, { step: 'complete', peopleData: parsed || undefined });
           toast.success(`Prospect research complete for ${company.name}`);
@@ -100,7 +116,7 @@ export default function Research() {
         }
       }
     },
-    [companies, selectedCampaign, user, companiesProgress, updateCompanyProgress],
+    [companies, selectedCampaign, user, companiesProgress, updateCompanyProgress, userWebhooks],
   );
 
   // Handle "Research MegaCorp Instead" for acquired-inactive companies
@@ -140,7 +156,8 @@ export default function Research() {
       updateCompanyProgress(company.id, { step: 'company' });
 
       try {
-        const companyData = await callResearchProxy(WEBHOOKS.COMPANY_RESEARCH, payload);
+        const webhookUrl = getResolvedWebhookUrl('company_research', userWebhooks);
+        const companyData = await callResearchProxy(webhookUrl, payload);
 
         if (companyData?.status === 'processing') {
           toast.info(`Research started for ${company.name}. Results will appear via realtime updates.`);
@@ -175,7 +192,7 @@ export default function Research() {
     setResearchProgress({ isRunning: false });
     isProcessingRef.current = false;
     toast.success('Research complete!');
-  }, [isRunning, companies, selectedCampaign, user, setResearchProgress, updateCompanyProgress]);
+  }, [isRunning, companies, selectedCampaign, user, setResearchProgress, updateCompanyProgress, userWebhooks]);
 
   useEffect(() => {
     if (isRunning && !isProcessingRef.current) processCompanies();

@@ -47,6 +47,9 @@ export interface UserIntegrations {
   dark_mode: boolean;
   sound_effects: boolean;
   clay_webhook_url?: string;
+  company_research_webhook_url?: string;
+  people_research_webhook_url?: string;
+  salesforce_import_webhook_url?: string;
 }
 
 export interface CampaignDraft {
