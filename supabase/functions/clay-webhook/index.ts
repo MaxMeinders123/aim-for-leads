@@ -18,48 +18,42 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    console.log("[clay-webhook] Request received");
+    console.log("[clay-webhook] Payload received:", JSON.stringify(body, null, 2));
 
-    // Clay sends enrichment results with personal_id to identify the prospect
+    // Clay sends results with personal_id to identify the prospect
+    // Expected payload: { personal_id, is_duplicate, salesforce_url }
     const { 
       personal_id, 
-      email, 
-      phone, 
-      mobile, 
-      is_duplicate, 
-      salesforce_url,
-      salesforce_account_id,
-      company_id,
+      is_duplicate,  // true = duplicate, false/undefined = inserted
+      salesforce_url, // URL to the contact in Salesforce
       // Legacy fields for backwards compatibility
       event,
       campaign_id,
       data 
     } = body;
 
-    // New flow: Update prospect by personal_id with enrichment data
+    // Update prospect by personal_id
     if (personal_id) {
       // Validate personal_id format (UUID)
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!uuidRegex.test(personal_id)) {
+        console.error("[clay-webhook] Invalid personal_id format:", personal_id);
         return new Response(
           JSON.stringify({ error: "Invalid personal_id format" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       
+      // Status: 'duplicate' if is_duplicate is true, otherwise 'inputted'
       const newStatus = is_duplicate === true ? 'duplicate' : 'inputted';
+      
+      console.log(`[clay-webhook] Updating prospect ${personal_id} to status: ${newStatus}, salesforce_url: ${salesforce_url}`);
       
       const { data: updatedProspect, error: updateError } = await supabase
         .from("prospect_research")
         .update({
-          email: email || null,
-          phone: phone || null,
-          mobile: mobile || null,
           status: newStatus,
           salesforce_url: salesforce_url || null,
-          salesforce_account_id: salesforce_account_id || null,
-          sent_to_clay: true,
-          sent_to_clay_at: new Date().toISOString(),
           clay_response: body,
         })
         .eq("personal_id", personal_id)
