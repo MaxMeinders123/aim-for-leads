@@ -20,53 +20,65 @@ serve(async (req) => {
     const body = await req.json();
     console.log("[clay-webhook] Payload received:", JSON.stringify(body, null, 2));
 
-    // Clay sends results with personal_id to identify the prospect
-    // Expected payload: { personal_id, is_duplicate, salesforce_url }
-    const { 
-      personal_id, 
+    // Clay sends results with personal_id or session_id to identify the prospect
+    // Expected payload: { personal_id, session_id, is_duplicate, salesforce_url, email, phone }
+    const {
+      personal_id,
+      session_id,    // matches the session_id sent in the outbound request
       is_duplicate,  // true = duplicate, false/undefined = inserted
       salesforce_url, // URL to the contact in Salesforce
+      email,         // enriched email from Clay
+      phone,         // enriched phone from Clay
       // Legacy fields for backwards compatibility
       event,
       campaign_id,
-      data 
+      data
     } = body;
 
-    // Update prospect by personal_id
-    if (personal_id) {
-      // Validate personal_id format (UUID)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(personal_id)) {
-        console.error("[clay-webhook] Invalid personal_id format:", personal_id);
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Match prospect by personal_id or session_id
+    const matchId = personal_id || session_id;
+    const matchColumn = personal_id ? "personal_id" : "clay_session_id";
+
+    if (matchId) {
+      // Validate UUID format
+      if (!uuidRegex.test(matchId)) {
+        console.error(`[clay-webhook] Invalid ${matchColumn} format:`, matchId);
         return new Response(
-          JSON.stringify({ error: "Invalid personal_id format" }),
+          JSON.stringify({ error: `Invalid ${matchColumn} format` }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       // Status: 'duplicate' if is_duplicate is true, otherwise 'inputted'
       const newStatus = is_duplicate === true ? 'duplicate' : 'inputted';
-      
-      console.log(`[clay-webhook] Updating prospect ${personal_id} to status: ${newStatus}, salesforce_url: ${salesforce_url}`);
-      
+
+      console.log(`[clay-webhook] Updating prospect by ${matchColumn}=${matchId} to status: ${newStatus}, salesforce_url: ${salesforce_url}`);
+
+      // Build update object — only set fields that Clay actually sent
+      const updateFields: Record<string, any> = {
+        status: newStatus,
+        clay_response: body,
+      };
+      if (salesforce_url) updateFields.salesforce_url = salesforce_url;
+      if (email) updateFields.email = email;
+      if (phone) updateFields.phone = phone;
+
       const { data: updatedProspect, error: updateError } = await supabase
         .from("prospect_research")
-        .update({
-          status: newStatus,
-          salesforce_url: salesforce_url || null,
-          clay_response: body,
-        })
-        .eq("personal_id", personal_id)
+        .update(updateFields)
+        .eq(matchColumn, matchId)
         .select()
         .single();
 
       if (updateError) {
 
-        // If no prospect found with this personal_id, it might be a data issue
+        // If no prospect found with this ID, it might be a data issue
         if (updateError.code === 'PGRST116') {
           return new Response(
             JSON.stringify({
-              error: `No prospect found with personal_id: ${personal_id}`,
+              error: `No prospect found with ${matchColumn}: ${matchId}`,
               details: "Prospect may not exist"
             }),
             { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -165,7 +177,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: "Invalid request - no personal_id or valid event provided" }),
+      JSON.stringify({ error: "Invalid request - no personal_id, session_id, or valid event provided" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

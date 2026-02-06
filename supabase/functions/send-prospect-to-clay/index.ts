@@ -98,12 +98,20 @@ serve(async (req) => {
         // Generate personal_id if not exists
         const personalId = prospect.personal_id || crypto.randomUUID();
 
+        // Generate a session_id for this request so Clay can match it back
+        const sessionId = crypto.randomUUID();
+
+        // Build the callback URL so Clay knows where to send results
+        const callbackWebhook = `${supabaseUrl}/functions/v1/clay-webhook`;
+
         // Build Clay payload - gets salesforce IDs from prospect or companies table
         const clayPayload = {
           personal_id: personalId,
+          session_id: sessionId,
           linkedin_url: prospect.linkedin_url,
           salesforce_account_id: prospect.salesforce_account_id || prospect.companies?.salesforce_account_id,
           salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.companies?.salesforce_campaign_id,
+          callback_webhook: callbackWebhook,
         };
 
         console.log("[send-prospect-to-clay] Sending to Clay:", clayPayload);
@@ -118,7 +126,7 @@ serve(async (req) => {
         const clayResult = await clayResponse.text();
         console.log("[send-prospect-to-clay] Clay response:", clayResult);
 
-        // Update prospect with sent status and personal_id
+        // Update prospect with sent status, personal_id, and session_id
         await supabase
           .from("prospect_research")
           .update({
@@ -126,6 +134,7 @@ serve(async (req) => {
             sent_to_clay_at: new Date().toISOString(),
             status: 'sent_to_clay',
             personal_id: personalId,
+            clay_session_id: sessionId,
             clay_response: { status: clayResponse.status, body: clayResult },
           })
           .eq("id", prospectId);
