@@ -12,8 +12,7 @@ import {
   CheckCircle,
   Rocket,
   Plus,
-  Trash2,
-  ExternalLink,
+  Users,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -27,7 +26,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAppStore, type Company, type CompanyResearchProgress } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchCompanies, addManualCompany, importSalesforceCompanies } from '@/services/api';
-import { WEBHOOKS } from '@/lib/constants';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -56,6 +54,9 @@ export default function Companies() {
   const [manualName, setManualName] = useState('');
   const [manualWebsite, setManualWebsite] = useState('');
   const [manualLinkedin, setManualLinkedin] = useState('');
+  
+  // Track completed research domains to filter them out
+  const [completedDomains, setCompletedDomains] = useState<Set<string>>(new Set());
   const [isAddingManual, setIsAddingManual] = useState(false);
 
   // Set selected campaign from URL
@@ -66,11 +67,32 @@ export default function Companies() {
     }
   }, [campaignId, campaigns, setSelectedCampaign]);
 
-  // Load companies
+  // Load companies and filter out completed research
   useEffect(() => {
     if (!campaignId) return;
     loadCompanies();
+    loadCompletedResearch();
   }, [campaignId]);
+
+  const loadCompletedResearch = useCallback(async () => {
+    if (!campaignId || !user?.id) return;
+    try {
+      // Fetch company_research records that are completed for this campaign
+      const { data, error } = await supabase
+        .from('company_research')
+        .select('company_domain')
+        .eq('campaign_id', campaignId)
+        .eq('user_id', user.id)
+        .eq('status', 'completed');
+      
+      if (error) throw error;
+      
+      const domains = new Set(data?.map(r => r.company_domain.toLowerCase()) || []);
+      setCompletedDomains(domains);
+    } catch (err) {
+      console.error('Failed to load completed research:', err);
+    }
+  }, [campaignId, user?.id]);
 
   const loadCompanies = useCallback(async () => {
     if (!campaignId) return;
@@ -155,7 +177,7 @@ export default function Companies() {
   };
 
   const handleStartResearch = () => {
-    const selected = companies.filter((c) => c.selected);
+    const selected = pendingCompanies.filter((c) => c.selected);
     if (selected.length === 0) {
       toast.error('Please select at least one company');
       return;
@@ -179,11 +201,29 @@ export default function Companies() {
     navigate(`/research/${campaignId}`);
   };
 
-  const selectedCount = companies.filter((c) => c.selected).length;
+  // Helper to extract domain from website URL
+  const getDomain = (website?: string) => {
+    if (!website) return null;
+    try {
+      const url = website.startsWith('http') ? website : `https://${website}`;
+      return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+      return website.toLowerCase();
+    }
+  };
+
+  // Filter out companies that have completed research
+  const pendingCompanies = companies.filter((c) => {
+    const domain = getDomain(c.website);
+    return !domain || !completedDomains.has(domain);
+  });
+
+  const selectedCount = pendingCompanies.filter((c) => c.selected).length;
+  const completedCount = companies.length - pendingCompanies.length;
 
   // Split companies by source for tab display
-  const salesforceCompanies = companies.filter((c) => c.salesforce_account_id);
-  const manualCompanies = companies.filter((c) => !c.salesforce_account_id);
+  const salesforceCompanies = pendingCompanies.filter((c) => c.salesforce_account_id);
+  const manualCompanies = pendingCompanies.filter((c) => !c.salesforce_account_id);
 
   const renderCompanyTable = (companyList: Company[]) => {
     if (isLoadingCompanies) {
@@ -301,6 +341,15 @@ export default function Companies() {
           title={selectedCampaign?.name || 'Companies'}
           subtitle={selectedCampaign?.product || undefined}
           backTo="/campaigns"
+          actions={
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/contacts/${campaignId}`)}
+            >
+              <Users className="w-4 h-4 mr-2" />
+              View Contacts
+            </Button>
+          }
         />
 
         <div className="flex-1 overflow-auto p-6">
@@ -358,7 +407,14 @@ export default function Companies() {
                 </p>
               </div>
 
-              {renderCompanyTable(salesforceCompanies.length > 0 ? salesforceCompanies : companies)}
+              {renderCompanyTable(salesforceCompanies.length > 0 ? salesforceCompanies : pendingCompanies)}
+              
+              {completedCount > 0 && (
+                <p className="text-sm text-muted-foreground mt-4">
+                  <CheckCircle className="w-4 h-4 inline mr-1" />
+                  {completedCount} {completedCount === 1 ? 'company' : 'companies'} already researched
+                </p>
+              )}
             </TabsContent>
 
             {/* Manual Entry Tab */}
@@ -401,13 +457,20 @@ export default function Companies() {
                 </div>
               </div>
 
-              {renderCompanyTable(manualCompanies.length > 0 ? manualCompanies : companies)}
+              {renderCompanyTable(manualCompanies.length > 0 ? manualCompanies : pendingCompanies)}
+              
+              {completedCount > 0 && (
+                <p className="text-sm text-muted-foreground mt-4">
+                  <CheckCircle className="w-4 h-4 inline mr-1" />
+                  {completedCount} {completedCount === 1 ? 'company' : 'companies'} already researched
+                </p>
+              )}
             </TabsContent>
           </Tabs>
         </div>
 
         {/* Footer with Start Research */}
-        {companies.length > 0 && (
+        {pendingCompanies.length > 0 && (
           <div className="px-6 py-4 border-t border-border bg-background">
             <div className="flex items-center justify-between max-w-4xl">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -418,7 +481,7 @@ export default function Companies() {
                 onClick={handleStartResearch}
                 disabled={selectedCount === 0}
                 size="lg"
-                className="bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white"
+                className="bg-primary hover:bg-primary/90"
               >
                 <Rocket className="w-5 h-5 mr-2" />
                 Start Research ({selectedCount})

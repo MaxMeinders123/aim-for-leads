@@ -254,7 +254,9 @@ export default function Research() {
             // The server-side auto-trigger in receive-company-results can be unreliable
             // (edge function timeouts, network issues), so also trigger from the frontend.
             const cs = rec.company_status || companyData?.company_status;
-            const stillOperates = (companyData as Record<string, unknown>)?.stillOperatesIndependently === true;
+            const stillOperates = companyData && 'stillOperatesIndependently' in companyData 
+              ? companyData.stillOperatesIndependently === true 
+              : false;
             const shouldTrigger =
               cs === COMPANY_STATUSES.OPERATING ||
               (cs === COMPANY_STATUSES.ACQUIRED && stillOperates) ||
