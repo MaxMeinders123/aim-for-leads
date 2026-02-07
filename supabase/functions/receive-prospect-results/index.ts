@@ -135,7 +135,7 @@ serve(async (req) => {
 
     // Extract contacts array from prospect_data
     const contacts = prospect_data?.contacts || (Array.isArray(prospect_data) ? prospect_data : []);
-    
+
     // Limit array size to prevent DoS
     const MAX_CONTACTS = 100;
     if (contacts.length > MAX_CONTACTS) {
@@ -145,18 +145,76 @@ serve(async (req) => {
       );
     }
 
+    // LinkedIn URL validation and normalization
+    const linkedinPattern = /^https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9\-_%]+\/?$/;
+    const validateLinkedInUrl = (url: string | null | undefined): { url: string | null; validated: boolean } => {
+      if (!url || typeof url !== 'string') return { url: null, validated: false };
+
+      let cleaned = url.trim();
+      if (!cleaned) return { url: null, validated: false };
+
+      // Add https:// if missing protocol
+      if (cleaned.startsWith('linkedin.com') || cleaned.startsWith('www.linkedin.com')) {
+        cleaned = 'https://' + cleaned;
+      }
+
+      // Remove trailing slash
+      cleaned = cleaned.replace(/\/$/, '');
+
+      // Validate format
+      if (!linkedinPattern.test(cleaned)) {
+        console.log(`[receive-prospect-results] Invalid LinkedIn URL format: ${url}`);
+        return { url: cleaned, validated: false };
+      }
+
+      return { url: cleaned, validated: true };
+    };
+
+    // Check for duplicate prospects (same name + company_research)
+    const existingProspects = companyResearchId ? await supabase
+      .from("prospect_research")
+      .select("first_name, last_name, linkedin_url")
+      .eq("company_research_id", companyResearchId)
+      .eq("user_id", user_id) : { data: [] };
+
+    const existingNames = new Set(
+      (existingProspects.data || []).map(
+        (p: { first_name: string; last_name: string }) =>
+          `${(p.first_name || '').toLowerCase()}_${(p.last_name || '').toLowerCase()}`
+      )
+    );
+
+    // Extract linkedin stats if provided by n8n validation step
+    const linkedinStats = prospect_data?.linkedin_stats || null;
+    if (linkedinStats) {
+      console.log(`[receive-prospect-results] LinkedIn stats from n8n: ${JSON.stringify(linkedinStats)}`);
+    }
+
     // Insert each prospect as a separate row
     const insertedProspects: string[] = [];
-    
+    const skippedDuplicates: string[] = [];
+
     for (const contact of contacts) {
       // Generate a unique personal_id for Clay tracking
       const personalId = crypto.randomUUID();
-      
+
       // Sanitize string fields to max length
       const sanitize = (val: unknown, maxLen = 500): string | null => {
         if (typeof val !== 'string') return null;
         return val.substring(0, maxLen).trim() || null;
       };
+
+      // Check for duplicates
+      const nameKey = `${(contact.first_name || '').toLowerCase()}_${(contact.last_name || '').toLowerCase()}`;
+      if (existingNames.has(nameKey)) {
+        console.log(`[receive-prospect-results] Skipping duplicate: ${contact.first_name} ${contact.last_name}`);
+        skippedDuplicates.push(nameKey);
+        continue;
+      }
+      existingNames.add(nameKey);
+
+      // Validate LinkedIn URL
+      const linkedinResult = validateLinkedInUrl(contact.linkedin || contact.linkedin_url);
 
       // ALWAYS include salesforce_campaign_id and salesforce_account_id from the original request
       const prospectInsert: Record<string, any> = {
@@ -164,11 +222,15 @@ serve(async (req) => {
         first_name: sanitize(contact.first_name, 100),
         last_name: sanitize(contact.last_name, 100),
         job_title: sanitize(contact.job_title || contact.title, 200),
-        linkedin_url: sanitize(contact.linkedin || contact.linkedin_url, 500),
+        linkedin_url: linkedinResult.url,
         priority: sanitize(contact.priority, 20),
         priority_reason: sanitize(contact.priority_reason, 500),
         pitch_type: sanitize(contact.pitch_type || contact.title, 100),
-        raw_data: contact,
+        raw_data: {
+          ...contact,
+          linkedin_validated: linkedinResult.validated,
+          linkedin_source: contact.linkedin_source || 'unknown',
+        },
         sent_to_clay: false,
         status: 'pending',
         personal_id: personalId,
@@ -239,12 +301,14 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         received: true,
         company_research_id: companyResearchId,
         company_id: resolvedCompanyId,
         prospects_inserted: insertedProspects.length,
+        prospects_skipped_duplicate: skippedDuplicates.length,
         prospect_ids: insertedProspects,
+        linkedin_stats: linkedinStats,
         status: status === "rejected" ? "rejected" : "completed",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

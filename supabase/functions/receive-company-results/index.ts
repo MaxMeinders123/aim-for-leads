@@ -235,18 +235,25 @@ serve(async (req) => {
           linkedin: "",
         };
 
+        let resolvedCompanyId: string | null = null;
+        let resolvedSalesforceCampaignId: string | null = body.salesforce_campaign_id || null;
+
         if (campaign_id) {
           const { data: companyRecords } = await supabase
             .from("companies")
-            .select("name, website, linkedin_url, salesforce_account_id")
+            .select("id, name, website, linkedin_url, salesforce_account_id, salesforce_campaign_id")
             .eq("campaign_id", campaign_id);
 
           const matchingCompany = companyRecords?.find((c: { name: string; website?: string | null }) => {
-            const domain = c.website?.replace(/^https?:\/\//, "").replace(/\/$/, "") || "";
+            const domain = c.website?.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "").toLowerCase() || "";
             return domain === company_domain || c.name.toLowerCase().replace(/\s+/g, "") === company_domain;
           });
 
           if (matchingCompany) {
+            resolvedCompanyId = matchingCompany.id;
+            if (!resolvedSalesforceCampaignId) {
+              resolvedSalesforceCampaignId = matchingCompany.salesforce_campaign_id || null;
+            }
             companyInfo = {
               name: matchingCompany.name || company_domain,
               website: matchingCompany.website || company_domain,
@@ -259,10 +266,11 @@ serve(async (req) => {
         const prospectPayload = {
           user_id,
           campaign_id: campaign_id || null,
+          company_id: resolvedCompanyId,
           company_research_id: insertedRecord.id,
           company_domain,
           salesforce_account_id: salesforce_account_id || null,
-          salesforce_campaign_id: body.salesforce_campaign_id || null,
+          salesforce_campaign_id: resolvedSalesforceCampaignId,
           campaign: campaignContext,
           company: companyInfo,
           companyResearch: company_data,

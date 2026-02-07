@@ -3,86 +3,6 @@
   "nodes": [
     {
       "parameters": {
-        "modelId": {
-          "__rl": true,
-          "value": "gpt-5.2",
-          "mode": "list",
-          "cachedResultName": "GPT-5.2"
-        },
-        "responses": {
-          "values": [
-            {
-              "content": "=SYSTEM ROLE\n\nYou are a world-class B2B Research Agent. Your goal is to validate the company status for {{ $json.body.company.name }} for the campaign {{ $json.body.campaign.campaignName }}.\n\nCAMPAIGN CONTEXT\n\nProduct:\n\nCategory: {{ $json.body.campaign.product }},{{ $json.body.campaign.primaryAngle }},{{ $json.body.campaign.secondaryAngle }}\n\nFocus Region: {{ $json.body.campaign.targetRegion }}\n\nCore Strategy:\n\nPain Points: {{ $json.body.campaign.painPoints[0] }}, {{ $json.body.campaign.painPoints[1] }}, {{ $json.body.campaign.painPoints[2] }}\n\nCRITICAL VALIDATION RULES\n\nACQUIRED / RENAMED / MERGED:\n\nSet \"company_status\": \"Acquired\" (or Renamed)\n\nInclude \"acquiredBy\": \"Parent Company Name\"\n\nInclude \"effectiveDate\": \"Year\"\n\nBANKRUPT / DEFUNCT:\n\nSet \"company_status\": \"Bankrupt\"\n\nNOT FOUND / UNVERIFIABLE:\n\nSet \"company_status\": \"Not_Found\"\n\nOPERATING:\n\nSet \"company_status\": \"Operating\"\n\nRESEARCH SOURCES PRIORITY\n\nPrimary: LinkedIn company page\n\nSecondary: Company website, leadership/about pages, vendor mentions\n\nTertiary: News, press releases, technical blogs\n\nConflict Resolution: If sources conflict, prioritize LinkedIn > Website > Other.\n\nOUTPUT REQUIREMENTS\n\nReturn ONLY a valid JSON object. No prose. No markdown links. Plain text URLs only. Escape quotes in strings. No trailing commas. Output the JSON code block only.\n\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"company_status\": \"Operating|Acquired|Bankrupt|Not_Found\",\n  \"acquiredBy\": \"Parent Co (if acquired/renamed)\",\n  \"effectiveDate\": \"YYYY\",\n  \"cloud_preference\": { \"provider\": \"AWS|Azure|GCP|Unknown\", \"confidence\": 0-100, \"evidence_urls\": [] }\n}\n\n\nINPUT FORMAT: Company: {{ $json.body.company.name }} website {{ $json.body.company.website }} linkedin {{ $json.body.company.linkedin }}\n\nCOMPANY TO RESEARCH: {{ $json.body.company.name }} (Website: {{ $json.body.company.website }}) (LinkedIn:{{ $json.body.company.linkedin }} )"
-            }
-          ]
-        },
-        "builtInTools": {
-          "webSearch": {
-            "searchContextSize": "medium"
-          }
-        },
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.1,
-      "position": [
-        -112,
-        -608
-      ],
-      "id": "c7caa677-57f9-45a9-8bbb-1331ade0dc16",
-      "name": "Company Check",
-      "credentials": {
-        "openAiApi": {
-          "id": "KSewCTd2Wh09tVkU",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "modelId": {
-          "__rl": true,
-          "value": "gpt-5.2",
-          "mode": "list",
-          "cachedResultName": "GPT-5.2"
-        },
-        "responses": {
-          "values": [
-            {
-              "content": "=SYSTEM ROLE\n\nYou are a world-class B2B Research Agent. Your goal is to find the \"Ideal Technical Buyers\" for {{ $json.body.campaign.campaignName }} at {{ $json.body.company.name }}.\n\nCAMPAIGN CONTEXT\n\nProduct:\n\nCategory: {{ $json.body.campaign.product }},{{ $json.body.campaign.primaryAngle }},{{ $json.body.campaign.secondaryAngle }}\n\nFocus Region: {{ $json.body.campaign.targetRegion }}\n\nCore Strategy:\n\nPain Points: {{ $json.body.campaign.painPoints[0] }}, {{ $json.body.campaign.painPoints[1] }}, {{ $json.body.campaign.painPoints[2] }}\n\nQUALIFICATION CRITERIA\n\nEach prospect must have:\n\nCurrent Employment: Must be currently employed at {{ $json.body.company.name }}\n\nDecision Authority: Ownership of network infrastructure, security architecture, application delivery, CDN, DDoS protection, or cloud platforms.\n\nDomain Alignment: Role must align with {{ $json.body.campaign.product }}/ {{ $json.body.campaign.productCategory }}\n\nSeniority: Director-level or above (Manager acceptable ONLY if they are the most senior relevant technical role).\n\nEXCLUDE: IT Support, Helpdesk, Junior Engineers, Trainees, Interns, generic Specialists without decision authority.\n\nRESEARCH METHODOLOGY (STRICT RULES)\n\nContact Count: Find exactly 3 to 7 perfect-fit contacts per company. Never return more than 7. Quality over quantity.\n\nPersona Weighting (80/20 Rule):\n\n80% Technical Owners: Find people who actually work with the tech (NOC, Infrastructure, DevOps, Cloud Architect, IT Ops).\n\n20% Strategic Owners: Find executive decision-makers (CTO, VP Eng) ONLY if they show a technical background.\n\nProhibited Roles: Do not include CEOs, CFOs, or HR unless they are explicitly technical acting-CTOs.\n\nLinkedIn Verification (CRITICAL):\n\nThe assistant must verify and provide actual LinkedIn URLs through direct search.\n\nSearch LinkedIn for \"[Person Name] [Company Name]\" to find their profile.\n\nCopy the actual LinkedIn URL from the search results or profile page.\n\nIf you cannot access LinkedIn directly: Explicitly state \"LinkedIn profile not publicly accessible\" in keys if blocked.\n\nNever guess: Do not construct or extrapolate URLs from name patterns.\n\nNo placeholders: Never return hypothetical URLs.\n\nValid pattern: linkedin.com/in/[profile-slug].\n\nResearch Sources Priority:\n\nPrimary: LinkedIn individual profiles & company pages (People tab).\n\nSecondary: Company website (Leadership/IT pages), Cloudflare/Vendor mentions.\n\nTertiary: News, press releases, technical blogs.\n\nConflict Resolution: If sources conflict, prioritize LinkedIn > Website > Other.\n\nData Hygiene:\n\nTitle Case Only: Format names like \"John Smith\".\n\nClean Titles: Strip \"CEO Etc\" or instruction fluff. Use the real, current job title.\n\nRegional Verify: Ensure the contact has authority for the {{ $json.body.campaign.targetRegion }} market.\n\nOUTPUT REQUIREMENTS\n\nReturn ONLY a valid JSON object. No prose. No markdown links. Plain text URLs only. Include exactly 3 to 7 contacts in the \"contacts\" array. Every contact must have a valid \"linkedin\" URL (e.g. linkedin.com/in/slug). Escape quotes in strings. No trailing commas. Output the JSON code block only.\n\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"contacts\": [\n    {\n      \"first_name\": \"...\",\n      \"last_name\": \"...\",\n      \"job_title\": \"Actual Title\",\n      \"title\": \"Security|AI|FinOps|Modernization\",\n      \"pitch_type\": \"Security|AI|FinOps|Modernization\",\n      \"linkedin\": \"linkedin.com/in/profile-slug\",\n      \"priority\": \"High|Medium|Low\",\n      \"priority_reason\": \"Matched for {{ $json.body.campaign.primaryAngle }} because they manage [Specific Tech Found]\"\n    }\n  ]\n}\n\n\nCOMPANY TO RESEARCH: {{ $json.body.company.name }} (Website: {{ $json.body.company.website }}) (LinkedIn:{{ $json.body.company.linkedin }} )"
-            }
-          ]
-        },
-        "builtInTools": {
-          "webSearch": {
-            "searchContextSize": "low"
-          }
-        },
-        "options": {
-          "reasoning": {
-            "reasoningOptions": {
-              "effort": "low"
-            }
-          }
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.1,
-      "position": [
-        -128,
-        -400
-      ],
-      "id": "95dff59d-5f87-466d-ad45-6cde16913da0",
-      "name": "Contact Search",
-      "credentials": {
-        "openAiApi": {
-          "id": "KSewCTd2Wh09tVkU",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
         "httpMethod": "POST",
         "path": "f545849d-1d19-43e7-9dfb-11e34166907f",
         "responseMode": "onReceived",
@@ -119,21 +39,89 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co' }}/functions/v1/receive-company-results",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company: $json['output'][0].content[0].text,\n  status: 'completed',\n  original_payload: $json.original_payload\n}) }}",
-        "options": {}
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are a B2B company research analyst. Validate the status of {{ $json.body.company.name }} and gather intelligence.\n\nCOMPANY TO RESEARCH:\nName: {{ $json.body.company.name }}\nWebsite: {{ $json.body.company.website }}\nLinkedIn: {{ $json.body.company.linkedin }}\n\nCAMPAIGN CONTEXT:\nProduct: {{ $json.body.campaign.product }}\nRegion: {{ $json.body.campaign.targetRegion }}\nTech Focus: {{ $json.body.campaign.techFocus }}\n\nRESEARCH TASKS:\n1. Is this company still operating independently?\n2. Was it acquired, renamed, or went bankrupt?\n3. If acquired: does it still operate as a separate entity with its own employees?\n4. What cloud provider do they likely use (AWS/Azure/GCP)?\n5. Brief summary relevant to selling {{ $json.body.campaign.product }}\n\nRESEARCH SOURCES (in priority order):\n- LinkedIn company page (primary)\n- Company website, about/leadership pages\n- News articles, press releases\n- If sources conflict: LinkedIn > Website > Other\n\nRESPOND WITH JSON ONLY (no markdown, no prose):\n{\n  \"status\": \"ok\",\n  \"company\": \"{{ $json.body.company.name }}\",\n  \"company_status\": \"Operating\" | \"Acquired\" | \"Renamed\" | \"Bankrupt\" | \"Not_Found\",\n  \"acquiredBy\": \"Parent Company Name or null\",\n  \"effectiveDate\": \"YYYY or null\",\n  \"stillOperatesIndependently\": true | false,\n  \"summary\": \"2-3 sentences about what they do and cloud usage\",\n  \"cloud_preference\": {\n    \"provider\": \"AWS\" | \"Azure\" | \"GCP\" | \"Unknown\",\n    \"confidence\": 0-100,\n    \"evidence_urls\": [\"url1\", \"url2\"]\n  }\n}\n\nSUMMARY RULES:\n- Operating/Independent: Focus ONLY on what they do + cloud usage. Max 2-3 sentences.\n- Renamed: 1-2 sentences about operations. Skip name change history.\n- Bankrupt/Not_Found: 1 sentence explaining why they don't qualify.\n- Truly merged (stillOperatesIndependently=false): Briefly explain impact."
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "medium"
+          }
+        },
+        "options": {
+          "temperature": 0.3
+        }
       },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
       "position": [
-        448,
+        -112,
         -608
       ],
-      "id": "a947a31a-22f3-4b8f-8aa8-83a52d6594de",
-      "name": "Send to Supabase (Company)"
+      "id": "c7caa677-57f9-45a9-8bbb-1331ade0dc16",
+      "name": "Company Check",
+      "credentials": {
+        "openAiApi": {
+          "id": "KSewCTd2Wh09tVkU",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You are an expert B2B prospect researcher. Your job is to find real, currently employed decision-makers at a specific company and provide their verified LinkedIn profile URLs.\n\nCRITICAL LINKEDIN RULES:\n1. You MUST search for each person individually on LinkedIn: search \"[First Last] [Company] site:linkedin.com/in\"\n2. Only return LinkedIn URLs you found in actual search results - NEVER construct URLs from name patterns\n3. A valid LinkedIn URL looks like: https://www.linkedin.com/in/actual-profile-slug\n4. If you cannot find a verified LinkedIn URL for someone, set linkedin to \"\" (empty string) - do NOT guess\n5. Cross-verify: the LinkedIn profile must show they CURRENTLY work at the target company\n6. Prefer profiles with recent activity (posts, job changes within last 2 years)\n\nEXCLUDE these roles:\n- Board members (Raad van Bestuur/Raad van Toezicht/Supervisory Board)\n- Non-executive directors, Advisors, Former employees\n- IT Support, Helpdesk, Junior Engineers, Trainees, Interns\n- CEOs/CFOs/HR unless they have explicit technical responsibility\n\nRESPOND WITH JSON ONLY (no markdown fences, no prose):\n{\n  \"status\": \"completed\",\n  \"company\": \"company name\",\n  \"contacts\": [\n    {\n      \"first_name\": \"string\",\n      \"last_name\": \"string\",\n      \"job_title\": \"their actual current title\",\n      \"linkedin\": \"https://www.linkedin.com/in/actual-slug OR empty string\",\n      \"linkedin_source\": \"search_result\" | \"company_page\" | \"not_found\",\n      \"priority\": \"High\" | \"Medium\" | \"Low\",\n      \"priority_reason\": \"1-2 sentences why this person is relevant\",\n      \"pitch_type\": \"Technical\" | \"Business\" | \"Executive\"\n    }\n  ]\n}"
+            },
+            {
+              "content": "=Find decision-makers at {{ $json.body.company.name }} ({{ $json.body.company.website }}) for the {{ $json.body.campaign.campaignName }} campaign.\n\nTARGET PROFILE:\n- Product: {{ $json.body.campaign.product }}\n- Region: {{ $json.body.campaign.targetRegion }}\n- Target Titles: {{ $json.body.campaign.targetTitles }}\n- Target Personas: {{ $json.body.campaign.targetPersonas }}\n- Primary Angle: {{ $json.body.campaign.primaryAngle }}\n- Pain Points: {{ $json.body.campaign.painPoints }}\n- Tech Focus: {{ $json.body.campaign.techFocus }}\n\nCompany Research Context:\n{{ JSON.stringify($json.body.companyResearch) }}\n\nSEARCH STRATEGY (follow this order):\n\nSTEP 1 - Find the company's LinkedIn page:\n- Search: \"{{ $json.body.company.name }} LinkedIn company page\"\n- Or use: {{ $json.body.company.linkedin }}\n- Browse the /people section to identify employees in relevant departments\n\nSTEP 2 - Search for specific roles:\n- For each target title, search: \"[title] {{ $json.body.company.name }} site:linkedin.com/in\"\n- Example: \"Head of Infrastructure {{ $json.body.company.name }} site:linkedin.com/in\"\n- Also try: \"[title] {{ $json.body.company.name }} LinkedIn\"\n\nSTEP 3 - Verify each person:\n- Click through to their LinkedIn profile in search results\n- Confirm they CURRENTLY work at {{ $json.body.company.name }} (not a past job)\n- Copy the exact URL from the search result\n- If the profile shows they left the company, DO NOT include them\n\nSTEP 4 - Balance the contact list:\n- 1-2 Senior decision-makers (Director/VP/Head level) who own budget\n- 2-4 Operational managers who feel the pain daily and influence decisions\n- Focus on {{ $json.body.campaign.targetRegion }} when possible\n- Adapt titles to industry norms (healthcare: \"Manager ICT\", finance: \"Head of Technology\")\n\nCONTACT COUNT:\n- Small company (<500 employees): 3-4 contacts\n- Medium (500-5000): 4-6 contacts  \n- Large (>5000): 5-7 contacts\n- NEVER more than 7 contacts\n\nIMPORTANT:\n- Quality over quantity - 3 verified contacts are better than 7 unverified ones\n- If you can only find 2-3 verified people, that's OK - return what you have\n- Set linkedin to \"\" for any contact where you couldn't verify the URL\n- Include linkedin_source to indicate how you found the URL"
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "high"
+          }
+        },
+        "options": {
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "high"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -128,
+        -400
+      ],
+      "id": "95dff59d-5f87-466d-ad45-6cde16913da0",
+      "name": "Contact Search",
+      "credentials": {
+        "openAiApi": {
+          "id": "KSewCTd2Wh09tVkU",
+          "name": "OpenAi account"
+        }
+      }
     },
     {
       "parameters": {
@@ -149,6 +137,18 @@
               "id": "f5e07b4f-58ed-4c1d-8389-6c773864ed02",
               "name": "body.company_domain",
               "value": "={{ $('Company Research Webhook').item.json.body.company_domain }}",
+              "type": "string"
+            },
+            {
+              "id": "campaign-id-assignment",
+              "name": "body.campaign_id",
+              "value": "={{ $('Company Research Webhook').item.json.body.campaign_id }}",
+              "type": "string"
+            },
+            {
+              "id": "salesforce-account-id-assignment",
+              "name": "body.salesforce_account_id",
+              "value": "={{ $('Company Research Webhook').item.json.body.salesforce_account_id }}",
               "type": "string"
             },
             {
@@ -178,34 +178,21 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get webhook data (edge function sends fields at top level in body)\nconst webhookData = $('Prospect Research Webhook').item.json.body;\n\n// Get parsed AI response from previous node\nconst parsedContacts = $input.item.json;\n\n// Combine them\nreturn {\n  body: {\n    user_id: webhookData.user_id,\n    company_domain: webhookData.company_domain,\n    company_research_id: webhookData.company_research_id\n  },\n  parsed_contacts: JSON.stringify(parsedContacts)\n};\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        432,
-        -400
-      ],
-      "id": "36a52499-396c-4547-81c5-1177120c85f6",
-      "name": "Format Prospect Data"
-    },
-    {
-      "parameters": {
         "method": "POST",
-        "url": "={{ $env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co' }}/functions/v1/receive-prospect-results",
+        "url": "={{ $env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co' }}/functions/v1/receive-company-results",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company_research_id: $json.body.company_research_id,\n  prospect: $json.parsed_contacts,\n  status: 'completed'\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  campaign_id: $json.body.campaign_id,\n  salesforce_account_id: $json.body.salesforce_account_id,\n  company: $json['output'][0].content[0].text,\n  status: 'completed'\n}) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        656,
-        -400
+        448,
+        -608
       ],
-      "id": "4a74a108-356e-44ae-9d79-d0819d4a5f01",
-      "name": "Send to Supabase (Prospect)"
+      "id": "a947a31a-22f3-4b8f-8aa8-83a52d6594de",
+      "name": "Send to Supabase (Company)"
     },
     {
       "parameters": {
@@ -219,6 +206,37 @@
       ],
       "id": "adfb21e7-e3ad-470a-8b0f-37b4456b2064",
       "name": "Parse Prospect JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate and clean LinkedIn URLs + pass through all webhook fields\nconst webhookData = $('Prospect Research Webhook').item.json.body;\nconst parsedContacts = $input.item.json;\n\n// LinkedIn URL validation regex\nconst linkedinPattern = /^https?:\\/\\/(www\\.)?linkedin\\.com\\/in\\/[a-zA-Z0-9\\-_%]+\\/?$/;\n\n// Normalize and validate LinkedIn URLs\nconst contacts = (parsedContacts.contacts || []).map(contact => {\n  let linkedin = (contact.linkedin || '').trim();\n  \n  // Skip empty\n  if (!linkedin) {\n    return { ...contact, linkedin: '', linkedin_validated: false };\n  }\n  \n  // Add https:// if missing\n  if (linkedin.startsWith('linkedin.com') || linkedin.startsWith('www.linkedin.com')) {\n    linkedin = 'https://' + linkedin;\n  }\n  \n  // Remove trailing slash for consistency\n  linkedin = linkedin.replace(/\\/$/, '');\n  \n  // Validate format\n  const isValid = linkedinPattern.test(linkedin);\n  \n  // Check for obviously fake/constructed URLs\n  // (e.g., generic slugs like 'john-smith' without any numbers)\n  const slug = linkedin.split('/in/')[1] || '';\n  const looksConstructed = slug && !slug.includes('-') && slug.length < 5;\n  \n  return {\n    ...contact,\n    linkedin: isValid && !looksConstructed ? linkedin : '',\n    linkedin_validated: isValid && !looksConstructed,\n    linkedin_raw: contact.linkedin // preserve original for debugging\n  };\n});\n\n// Count validated vs total\nconst totalContacts = contacts.length;\nconst validatedCount = contacts.filter(c => c.linkedin_validated).length;\n\nreturn {\n  body: {\n    user_id: webhookData.user_id,\n    company_domain: webhookData.company_domain,\n    company_research_id: webhookData.company_research_id,\n    campaign_id: webhookData.campaign_id,\n    company_id: webhookData.company_id,\n    salesforce_account_id: webhookData.salesforce_account_id,\n    salesforce_campaign_id: webhookData.salesforce_campaign_id\n  },\n  parsed_contacts: JSON.stringify({\n    status: parsedContacts.status || 'completed',\n    company: parsedContacts.company,\n    contacts: contacts,\n    linkedin_stats: {\n      total: totalContacts,\n      validated: validatedCount,\n      unvalidated: totalContacts - validatedCount\n    }\n  })\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        -400
+      ],
+      "id": "36a52499-396c-4547-81c5-1177120c85f6",
+      "name": "Validate & Format Prospect Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL || 'https://lqrkrzikjlavnltbnnoa.supabase.co' }}/functions/v1/receive-prospect-results",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  user_id: $json.body.user_id,\n  company_domain: $json.body.company_domain,\n  company_research_id: $json.body.company_research_id,\n  campaign_id: $json.body.campaign_id,\n  company_id: $json.body.company_id,\n  salesforce_account_id: $json.body.salesforce_account_id,\n  salesforce_campaign_id: $json.body.salesforce_campaign_id,\n  prospect: $json.parsed_contacts,\n  status: 'completed'\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        656,
+        -400
+      ],
+      "id": "4a74a108-356e-44ae-9d79-d0819d4a5f01",
+      "name": "Send to Supabase (Prospect)"
     }
   ],
   "pinData": {},
@@ -282,14 +300,14 @@
       "main": [
         [
           {
-            "node": "Format Prospect Data",
+            "node": "Validate & Format Prospect Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Format Prospect Data": {
+    "Validate & Format Prospect Data": {
       "main": [
         [
           {
