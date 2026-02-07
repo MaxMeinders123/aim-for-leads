@@ -249,7 +249,7 @@ export default function Research() {
         async (payload) => {
           const rec = payload.new as { id: string; company_domain: string; raw_data: unknown; status: string; company_status: string | null };
           const match = companies.find((c) => {
-            const domain = c.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || c.name.toLowerCase().replace(/\s+/g, '');
+            const domain = c.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase() || c.name.toLowerCase().replace(/\s+/g, '');
             return domain === rec.company_domain;
           });
           if (match && rec.status === 'completed') {
@@ -282,7 +282,7 @@ export default function Research() {
           if (!cr) return;
 
           const match = companies.find((c) => {
-            const domain = c.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || c.name.toLowerCase().replace(/\s+/g, '');
+            const domain = c.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase() || c.name.toLowerCase().replace(/\s+/g, '');
             return domain === cr.company_domain;
           });
           if (!match) return;
