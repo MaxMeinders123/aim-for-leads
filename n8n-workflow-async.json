@@ -252,7 +252,93 @@
       "name": "Send to Supabase (Prospect)"
     }
   ],
-  "pinData": {},
+  "pinData": {
+    "Company Research Webhook": [
+      {
+        "json": {
+          "headers": {
+            "content-type": "application/json"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "campaign_id": "ca000001-aaaa-bbbb-cccc-ddddeeee0001",
+            "salesforce_account_id": "001TEST000DUMMY01",
+            "company_domain": "www.testcorp-demo.com",
+            "campaign": {
+              "campaignName": "Test Campaign - Cloud Migration NL",
+              "product": "Cloud Modernization & Managed Cloud Services",
+              "productCategory": "Cloud Services",
+              "primaryAngle": "Reduce Cloud Spend & Increase Cost Predictability (FinOps-led)",
+              "secondaryAngle": "Cloud Governance, Security & Operational Control",
+              "targetRegion": "Benelux",
+              "targetTitles": ["CTO", "VP Engineering", "Head of Infrastructure", "Cloud Platform Lead", "DevOps Manager"],
+              "targetPersonas": ["Strategic Decision Maker (Cost + Risk Owner)", "Operational Owner (Feels the Pain Daily)"],
+              "painPoints": ["Unpredictable monthly cloud bills", "No chargeback/showback model", "High operational load on CloudOps teams"],
+              "targetVerticals": [],
+              "techFocus": "AWS"
+            },
+            "company": {
+              "name": "TestCorp Demo BV",
+              "website": "www.testcorp-demo.com",
+              "linkedin": ""
+            }
+          }
+        }
+      }
+    ],
+    "Prospect Research Webhook": [
+      {
+        "json": {
+          "headers": {
+            "content-type": "application/json"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "campaign_id": "ca000001-aaaa-bbbb-cccc-ddddeeee0001",
+            "salesforce_account_id": "001TEST000DUMMY01",
+            "salesforce_campaign_id": "701TEST000DUMMY01",
+            "company_domain": "www.testcorp-demo.com",
+            "company_research_id": "cr000001-1111-2222-3333-444455550001",
+            "company_id": "co000001-aaaa-bbbb-cccc-111122220001",
+            "campaign": {
+              "campaignName": "Test Campaign - Cloud Migration NL",
+              "product": "Cloud Modernization & Managed Cloud Services",
+              "productCategory": "Cloud Services",
+              "primaryAngle": "Reduce Cloud Spend & Increase Cost Predictability (FinOps-led)",
+              "secondaryAngle": "Cloud Governance, Security & Operational Control",
+              "targetRegion": "Benelux",
+              "targetTitles": ["CTO", "VP Engineering", "Head of Infrastructure", "Cloud Platform Lead", "DevOps Manager", "SRE Manager"],
+              "targetPersonas": ["Strategic Decision Maker (Cost + Risk Owner)", "Operational Owner (Feels the Pain Daily)", "Financial / Governance Influencer"],
+              "painPoints": ["Unpredictable monthly cloud bills", "No chargeback/showback model", "High operational load on CloudOps teams", "Savings Plans underutilised"],
+              "targetVerticals": [],
+              "techFocus": "AWS"
+            },
+            "company": {
+              "name": "TestCorp Demo BV",
+              "website": "www.testcorp-demo.com",
+              "linkedin": "https://www.linkedin.com/company/testcorp-demo"
+            },
+            "companyResearch": {
+              "company_status": "Operating",
+              "acquiredBy": null,
+              "effectiveDate": null,
+              "stillOperatesIndependently": true,
+              "cloud_preference": {
+                "provider": "AWS",
+                "confidence": 80
+              },
+              "summary": "TestCorp Demo BV is a mid-sized Dutch technology company specializing in logistics software. They run their platform primarily on AWS with a mix of EC2, EKS, and managed databases. Growing cloud spend and lack of FinOps maturity make them a strong fit for cloud modernization services."
+            },
+            "qualify": true
+          }
+        }
+      }
+    ]
+  },
   "connections": {
     "Company Research Webhook": {
       "main": [
