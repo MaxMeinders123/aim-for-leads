@@ -100,10 +100,10 @@ serve(async (req) => {
     console.log("[import-salesforce-campaign] Companies from Salesforce:", companiesToInsert.length);
 
     // Deduplicate: check which companies already exist in this campaign
-    // Match by salesforce_account_id (primary) or name (fallback)
+    // Match by salesforce_account_id (primary), name, or website domain
     const { data: existingCompanies } = await supabase
       .from("companies")
-      .select("salesforce_account_id, name")
+      .select("salesforce_account_id, name, website")
       .eq("campaign_id", campaign_id)
       .eq("user_id", user_id);
 
@@ -116,14 +116,36 @@ serve(async (req) => {
       (existingCompanies || [])
         .map((c: { name: string }) => c.name.toLowerCase().trim())
     );
+    
+    // Extract domains from existing websites
+    const extractDomain = (url: string | null): string | null => {
+      if (!url) return null;
+      try {
+        const cleanUrl = url.startsWith('http') ? url : `https://${url}`;
+        return new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase();
+      } catch {
+        return url.toLowerCase().replace(/^www\./, '');
+      }
+    };
+    
+    const existingDomains = new Set(
+      (existingCompanies || [])
+        .map((c: { website: string | null }) => extractDomain(c.website))
+        .filter(Boolean)
+    );
 
-    const newCompanies = companiesToInsert.filter((c: { salesforce_account_id: string | null; name: string }) => {
+    const newCompanies = companiesToInsert.filter((c: { salesforce_account_id: string | null; name: string; website: string | null }) => {
       // Skip if this SF account ID already exists in the campaign
       if (c.salesforce_account_id && existingSfIds.has(c.salesforce_account_id)) {
         return false;
       }
-      // Skip if company name already exists in the campaign (fallback for manual entries)
+      // Skip if company name already exists in the campaign
       if (existingNames.has(c.name.toLowerCase().trim())) {
+        return false;
+      }
+      // Skip if website domain already exists in the campaign
+      const domain = extractDomain(c.website);
+      if (domain && existingDomains.has(domain)) {
         return false;
       }
       return true;

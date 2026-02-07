@@ -95,6 +95,22 @@ export async function addManualCompany(
   return data;
 }
 
+export async function deleteCompany(companyId: string) {
+  const { error } = await supabase
+    .from('companies')
+    .delete()
+    .eq('id', companyId);
+  if (error) throw error;
+}
+
+export async function deleteMultipleCompanies(companyIds: string[]) {
+  const { error } = await supabase
+    .from('companies')
+    .delete()
+    .in('id', companyIds);
+  if (error) throw error;
+}
+
 export async function importSalesforceCompanies(
   userId: string,
   campaignId: string,
