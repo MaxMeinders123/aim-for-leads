@@ -14,6 +14,11 @@ import {
   Plus,
   Users,
   Trash2,
+  ChevronDown,
+  AlertTriangle,
+  XCircle,
+  HelpCircle,
+  ArrowUpRight,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -24,11 +29,26 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { useAppStore, type Company, type CompanyResearchProgress } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchCompanies, addManualCompany, importSalesforceCompanies, deleteMultipleCompanies } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+interface ResearchedCompany {
+  id: string;
+  company_domain: string;
+  company_name: string | null;
+  company_status: string | null;
+  acquired_by: string | null;
+  cloud_provider: string | null;
+  status: string;
+}
 
 export default function Companies() {
   const navigate = useNavigate();
@@ -58,6 +78,8 @@ export default function Companies() {
   
   // Track completed research domains to filter them out
   const [completedDomains, setCompletedDomains] = useState<Set<string>>(new Set());
+  const [researchedCompanies, setResearchedCompanies] = useState<ResearchedCompany[]>([]);
+  const [showResearched, setShowResearched] = useState(true);
   const [isAddingManual, setIsAddingManual] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -79,17 +101,21 @@ export default function Companies() {
   const loadCompletedResearch = useCallback(async () => {
     if (!campaignId || !user?.id) return;
     try {
-      // Fetch company_research records that are completed for this campaign
+      // Fetch company_research records for this campaign with full details
       const { data, error } = await supabase
         .from('company_research')
-        .select('company_domain')
+        .select('id, company_domain, company_name, company_status, acquired_by, cloud_provider, status')
         .eq('campaign_id', campaignId)
-        .eq('user_id', user.id)
-        .eq('status', 'completed');
+        .eq('user_id', user.id);
       
       if (error) throw error;
       
-      const domains = new Set(data?.map(r => r.company_domain.toLowerCase()) || []);
+      // Set researched companies for display
+      setResearchedCompanies(data || []);
+      
+      // Set domains for filtering (only completed ones)
+      const completedRecords = data?.filter(r => r.status === 'completed') || [];
+      const domains = new Set(completedRecords.map(r => r.company_domain.toLowerCase()));
       setCompletedDomains(domains);
     } catch (err) {
       console.error('Failed to load completed research:', err);
@@ -246,11 +272,96 @@ export default function Companies() {
   });
 
   const selectedCount = pendingCompanies.filter((c) => c.selected).length;
-  const completedCount = companies.length - pendingCompanies.length;
+  const completedCount = researchedCompanies.length;
 
   // Split companies by source for tab display
   const salesforceCompanies = pendingCompanies.filter((c) => c.salesforce_account_id);
   const manualCompanies = pendingCompanies.filter((c) => !c.salesforce_account_id);
+
+  // Get company status icon and color
+  const getStatusDisplay = (status: string | null) => {
+    switch (status?.toLowerCase()) {
+      case 'operating':
+        return { icon: CheckCircle, variant: 'default' as const, label: 'Operating', className: 'bg-emerald-500/10 text-emerald-700 border-emerald-200' };
+      case 'acquired':
+        return { icon: ArrowUpRight, variant: 'secondary' as const, label: 'Acquired', className: 'bg-sky-500/10 text-sky-700 border-sky-200' };
+      case 'renamed':
+        return { icon: ArrowUpRight, variant: 'secondary' as const, label: 'Renamed', className: 'bg-amber-500/10 text-amber-700 border-amber-200' };
+      case 'bankrupt':
+        return { icon: XCircle, variant: 'destructive' as const, label: 'Bankrupt', className: 'bg-destructive/10 text-destructive border-destructive/20' };
+      case 'not_found':
+        return { icon: HelpCircle, variant: 'outline' as const, label: 'Not Found', className: '' };
+      default:
+        return { icon: AlertTriangle, variant: 'outline' as const, label: status || 'Unknown', className: '' };
+    }
+  };
+
+  // Render researched companies section
+  const renderResearchedCompanies = () => {
+    if (researchedCompanies.length === 0) return null;
+
+    return (
+      <Collapsible open={showResearched} onOpenChange={setShowResearched} className="mt-6">
+        <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full">
+          <ChevronDown className={cn("w-4 h-4 transition-transform", showResearched && "rotate-180")} />
+          <CheckCircle className="w-4 h-4 text-primary" />
+          <span>Researched Companies ({researchedCompanies.length})</span>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3">
+          <div className="border rounded-lg overflow-hidden">
+            <div className="divide-y">
+              {researchedCompanies.map((company) => {
+                const statusDisplay = getStatusDisplay(company.company_status);
+                const StatusIcon = statusDisplay.icon;
+                const isProcessing = company.status === 'processing';
+                
+                return (
+                  <div
+                    key={company.id}
+                    onClick={() => navigate(`/contacts/${campaignId}`)}
+                    className="flex items-center gap-4 px-4 py-3.5 cursor-pointer hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">
+                        {company.company_name || company.company_domain}
+                      </p>
+                      <p className="text-sm text-muted-foreground truncate">{company.company_domain}</p>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      {isProcessing ? (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Processing
+                        </Badge>
+                      ) : (
+                        <Badge variant={statusDisplay.variant} className={cn("flex items-center gap-1", statusDisplay.className)}>
+                          <StatusIcon className="w-3 h-3" />
+                          {statusDisplay.label}
+                        </Badge>
+                      )}
+                      
+                      {company.acquired_by && (
+                        <span className="text-xs text-muted-foreground">
+                          by {company.acquired_by}
+                        </span>
+                      )}
+                      
+                      {company.cloud_provider && (
+                        <Badge variant="outline" className="text-xs">
+                          {company.cloud_provider}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  };
 
   const renderCompanyTable = (companyList: Company[]) => {
     if (isLoadingCompanies) {
@@ -452,12 +563,7 @@ export default function Companies() {
 
               {renderCompanyTable(salesforceCompanies.length > 0 ? salesforceCompanies : pendingCompanies)}
               
-              {completedCount > 0 && (
-                <p className="text-sm text-muted-foreground mt-4">
-                  <CheckCircle className="w-4 h-4 inline mr-1" />
-                  {completedCount} {completedCount === 1 ? 'company' : 'companies'} already researched
-                </p>
-              )}
+              {renderResearchedCompanies()}
             </TabsContent>
 
             {/* Manual Entry Tab */}
@@ -502,12 +608,7 @@ export default function Companies() {
 
               {renderCompanyTable(manualCompanies.length > 0 ? manualCompanies : pendingCompanies)}
               
-              {completedCount > 0 && (
-                <p className="text-sm text-muted-foreground mt-4">
-                  <CheckCircle className="w-4 h-4 inline mr-1" />
-                  {completedCount} {completedCount === 1 ? 'company' : 'companies'} already researched
-                </p>
-              )}
+              {renderResearchedCompanies()}
             </TabsContent>
           </Tabs>
         </div>
