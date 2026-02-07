@@ -104,12 +104,11 @@ serve(async (req) => {
         // Build the callback URL so Clay knows where to send results
         const callbackWebhook = `${supabaseUrl}/functions/v1/clay-webhook`;
 
-        // Build Clay payload - gets salesforce IDs and campaign_id from prospect or companies table
+        // Build Clay payload - gets salesforce IDs from prospect or companies table
         const clayPayload = {
           personal_id: personalId,
           session_id: sessionId,
           user_id,
-          campaign_id: prospect.campaign_id || prospect.companies?.campaign_id,
           linkedin_url: prospect.linkedin_url,
           salesforce_account_id: prospect.salesforce_account_id || prospect.companies?.salesforce_account_id,
           salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.companies?.salesforce_campaign_id,
