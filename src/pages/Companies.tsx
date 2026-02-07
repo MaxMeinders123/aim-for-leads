@@ -128,7 +128,13 @@ export default function Companies() {
     setIsImporting(true);
     try {
       const data = await importSalesforceCompanies(user.id, campaignId, salesforceCampaignId.trim());
-      toast.success(`Imported ${data.imported_count} companies from Salesforce`);
+      if (data.imported_count === 0 && data.skipped_duplicates > 0) {
+        toast.info(`All ${data.skipped_duplicates} companies are already imported`);
+      } else if (data.skipped_duplicates > 0) {
+        toast.success(`Imported ${data.imported_count} companies (${data.skipped_duplicates} already existed)`);
+      } else {
+        toast.success(`Imported ${data.imported_count} companies from Salesforce`);
+      }
       setSalesforceCampaignId('');
       await loadCompanies();
     } catch (err: unknown) {
