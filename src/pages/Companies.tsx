@@ -15,10 +15,6 @@ import {
   Users,
   Trash2,
   ChevronDown,
-  AlertTriangle,
-  XCircle,
-  HelpCircle,
-  ArrowUpRight,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -34,9 +30,19 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { ResearchedCompanyCard } from '@/components/research/ResearchedCompanyCard';
 import { useAppStore, type Company, type CompanyResearchProgress } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchCompanies, addManualCompany, importSalesforceCompanies, deleteMultipleCompanies } from '@/services/api';
+import { 
+  fetchCompanies, 
+  addManualCompany, 
+  importSalesforceCompanies, 
+  deleteMultipleCompanies,
+  callResearchProxy,
+  buildCompanyResearchPayload,
+  getResolvedWebhookUrl,
+  fetchUserIntegrations,
+} from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -47,7 +53,25 @@ interface ResearchedCompany {
   company_status: string | null;
   acquired_by: string | null;
   cloud_provider: string | null;
+  cloud_confidence: number | null;
   status: string;
+}
+
+interface Prospect {
+  id: string;
+  company_research_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  job_title: string | null;
+  linkedin_url: string | null;
+  priority: string | null;
+  priority_reason: string | null;
+  pitch_type: string | null;
+  email: string | null;
+  phone: string | null;
+  status: string | null;
+  salesforce_url: string | null;
+  sent_to_clay: boolean;
 }
 
 export default function Companies() {
@@ -79,9 +103,11 @@ export default function Companies() {
   // Track completed research domains to filter them out
   const [completedDomains, setCompletedDomains] = useState<Set<string>>(new Set());
   const [researchedCompanies, setResearchedCompanies] = useState<ResearchedCompany[]>([]);
+  const [prospectsMap, setProspectsMap] = useState<Record<string, Prospect[]>>({});
   const [showResearched, setShowResearched] = useState(true);
   const [isAddingManual, setIsAddingManual] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [reResearchingId, setReResearchingId] = useState<string | null>(null);
 
   // Set selected campaign from URL
   useEffect(() => {
@@ -104,7 +130,7 @@ export default function Companies() {
       // Fetch company_research records for this campaign with full details
       const { data, error } = await supabase
         .from('company_research')
-        .select('id, company_domain, company_name, company_status, acquired_by, cloud_provider, status')
+        .select('id, company_domain, company_name, company_status, acquired_by, cloud_provider, cloud_confidence, status')
         .eq('campaign_id', campaignId)
         .eq('user_id', user.id);
       
@@ -117,6 +143,26 @@ export default function Companies() {
       const completedRecords = data?.filter(r => r.status === 'completed') || [];
       const domains = new Set(completedRecords.map(r => r.company_domain.toLowerCase()));
       setCompletedDomains(domains);
+
+      // Load prospects for all researched companies
+      if (data && data.length > 0) {
+        const companyResearchIds = data.map(c => c.id);
+        const { data: prospects, error: prospectsError } = await supabase
+          .from('prospect_research')
+          .select('*')
+          .in('company_research_id', companyResearchIds);
+        
+        if (!prospectsError && prospects) {
+          const grouped: Record<string, Prospect[]> = {};
+          prospects.forEach(p => {
+            if (!grouped[p.company_research_id]) {
+              grouped[p.company_research_id] = [];
+            }
+            grouped[p.company_research_id].push(p);
+          });
+          setProspectsMap(grouped);
+        }
+      }
     } catch (err) {
       console.error('Failed to load completed research:', err);
     }
@@ -278,21 +324,43 @@ export default function Companies() {
   const salesforceCompanies = pendingCompanies.filter((c) => c.salesforce_account_id);
   const manualCompanies = pendingCompanies.filter((c) => !c.salesforce_account_id);
 
-  // Get company status icon and color
-  const getStatusDisplay = (status: string | null) => {
-    switch (status?.toLowerCase()) {
-      case 'operating':
-        return { icon: CheckCircle, variant: 'default' as const, label: 'Operating', className: 'bg-emerald-500/10 text-emerald-700 border-emerald-200' };
-      case 'acquired':
-        return { icon: ArrowUpRight, variant: 'secondary' as const, label: 'Acquired', className: 'bg-sky-500/10 text-sky-700 border-sky-200' };
-      case 'renamed':
-        return { icon: ArrowUpRight, variant: 'secondary' as const, label: 'Renamed', className: 'bg-amber-500/10 text-amber-700 border-amber-200' };
-      case 'bankrupt':
-        return { icon: XCircle, variant: 'destructive' as const, label: 'Bankrupt', className: 'bg-destructive/10 text-destructive border-destructive/20' };
-      case 'not_found':
-        return { icon: HelpCircle, variant: 'outline' as const, label: 'Not Found', className: '' };
-      default:
-        return { icon: AlertTriangle, variant: 'outline' as const, label: status || 'Unknown', className: '' };
+  // Handle re-research of a company
+  const handleReResearch = async (companyResearchId: string) => {
+    if (!user?.id || !selectedCampaign) return;
+    
+    const researchedCompany = researchedCompanies.find(c => c.id === companyResearchId);
+    if (!researchedCompany) return;
+
+    setReResearchingId(companyResearchId);
+    
+    try {
+      // Get user integrations for webhook URL
+      const integrations = await fetchUserIntegrations(user.id);
+      const webhookUrl = getResolvedWebhookUrl('company_research', integrations);
+      
+      // Build a minimal company object for the payload
+      const companyForPayload: Company = {
+        id: companyResearchId,
+        campaign_id: campaignId || '',
+        name: researchedCompany.company_name || researchedCompany.company_domain,
+        website: researchedCompany.company_domain,
+      };
+
+      const payload = buildCompanyResearchPayload(selectedCampaign, companyForPayload, user.id);
+      
+      // Trigger the research
+      await callResearchProxy(webhookUrl, payload);
+      
+      toast.success(`Re-research started for ${researchedCompany.company_name || researchedCompany.company_domain}`);
+      
+      // Reload the data after a short delay
+      setTimeout(() => {
+        loadCompletedResearch();
+      }, 2000);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to start re-research');
+    } finally {
+      setReResearchingId(null);
     }
   };
 
@@ -307,57 +375,17 @@ export default function Companies() {
           <CheckCircle className="w-4 h-4 text-primary" />
           <span>Researched Companies ({researchedCompanies.length})</span>
         </CollapsibleTrigger>
-        <CollapsibleContent className="mt-3">
-          <div className="border rounded-lg overflow-hidden">
-            <div className="divide-y">
-              {researchedCompanies.map((company) => {
-                const statusDisplay = getStatusDisplay(company.company_status);
-                const StatusIcon = statusDisplay.icon;
-                const isProcessing = company.status === 'processing';
-                
-                return (
-                  <div
-                    key={company.id}
-                    onClick={() => navigate(`/contacts/${campaignId}`)}
-                    className="flex items-center gap-4 px-4 py-3.5 cursor-pointer hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">
-                        {company.company_name || company.company_domain}
-                      </p>
-                      <p className="text-sm text-muted-foreground truncate">{company.company_domain}</p>
-                    </div>
-
-                    <div className="flex items-center gap-3 shrink-0">
-                      {isProcessing ? (
-                        <Badge variant="outline" className="flex items-center gap-1">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Processing
-                        </Badge>
-                      ) : (
-                        <Badge variant={statusDisplay.variant} className={cn("flex items-center gap-1", statusDisplay.className)}>
-                          <StatusIcon className="w-3 h-3" />
-                          {statusDisplay.label}
-                        </Badge>
-                      )}
-                      
-                      {company.acquired_by && (
-                        <span className="text-xs text-muted-foreground">
-                          by {company.acquired_by}
-                        </span>
-                      )}
-                      
-                      {company.cloud_provider && (
-                        <Badge variant="outline" className="text-xs">
-                          {company.cloud_provider}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <CollapsibleContent className="mt-3 space-y-3">
+          {researchedCompanies.map((company) => (
+            <ResearchedCompanyCard
+              key={company.id}
+              company={company}
+              prospects={prospectsMap[company.id] || []}
+              onReResearch={handleReResearch}
+              onProspectsUpdated={loadCompletedResearch}
+              isReResearching={reResearchingId === company.id}
+            />
+          ))}
         </CollapsibleContent>
       </Collapsible>
     );
