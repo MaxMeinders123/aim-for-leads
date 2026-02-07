@@ -97,11 +97,60 @@ serve(async (req) => {
       status: 'imported',
     }));
 
-    console.log("[import-salesforce-campaign] Inserting companies:", companiesToInsert.length);
+    console.log("[import-salesforce-campaign] Companies from Salesforce:", companiesToInsert.length);
+
+    // Deduplicate: check which companies already exist in this campaign
+    // Match by salesforce_account_id (primary) or name (fallback)
+    const { data: existingCompanies } = await supabase
+      .from("companies")
+      .select("salesforce_account_id, name")
+      .eq("campaign_id", campaign_id)
+      .eq("user_id", user_id);
+
+    const existingSfIds = new Set(
+      (existingCompanies || [])
+        .map((c: { salesforce_account_id: string | null }) => c.salesforce_account_id)
+        .filter(Boolean)
+    );
+    const existingNames = new Set(
+      (existingCompanies || [])
+        .map((c: { name: string }) => c.name.toLowerCase().trim())
+    );
+
+    const newCompanies = companiesToInsert.filter((c: { salesforce_account_id: string | null; name: string }) => {
+      // Skip if this SF account ID already exists in the campaign
+      if (c.salesforce_account_id && existingSfIds.has(c.salesforce_account_id)) {
+        return false;
+      }
+      // Skip if company name already exists in the campaign (fallback for manual entries)
+      if (existingNames.has(c.name.toLowerCase().trim())) {
+        return false;
+      }
+      return true;
+    });
+
+    const skippedCount = companiesToInsert.length - newCompanies.length;
+    if (skippedCount > 0) {
+      console.log(`[import-salesforce-campaign] Skipped ${skippedCount} duplicate companies`);
+    }
+
+    if (newCompanies.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          imported_count: 0,
+          skipped_duplicates: skippedCount,
+          message: "All companies from this Salesforce campaign are already imported",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("[import-salesforce-campaign] Inserting new companies:", newCompanies.length);
 
     const { data: insertedCompanies, error: insertError } = await supabase
       .from("companies")
-      .insert(companiesToInsert)
+      .insert(newCompanies)
       .select();
 
     if (insertError) {
@@ -112,10 +161,15 @@ serve(async (req) => {
       );
     }
 
-    // Update campaign companies_count
+    // Update campaign companies_count with actual total (not just this import batch)
+    const { count: totalCompanies } = await supabase
+      .from("companies")
+      .select("id", { count: 'exact', head: true })
+      .eq("campaign_id", campaign_id);
+
     await supabase
       .from("campaigns")
-      .update({ companies_count: insertedCompanies?.length || 0 })
+      .update({ companies_count: totalCompanies || 0 })
       .eq("id", campaign_id);
 
     console.log("[import-salesforce-campaign] Successfully imported:", insertedCompanies?.length);
@@ -124,6 +178,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         imported_count: insertedCompanies?.length || 0,
+        skipped_duplicates: skippedCount,
         companies: insertedCompanies,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
