@@ -251,79 +251,175 @@ export default function Campaigns() {
 
           {/* Campaign cards grid */}
           {!isLoading && campaigns.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {campaigns.map((campaign) => (
-                <div
-                  key={campaign.id}
-                  onClick={() => navigate(`/companies/${campaign.id}`)}
-                  className="group relative p-6 rounded-xl border bg-card hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
-                >
-                  {/* Menu */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="absolute top-3 right-3 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => e.stopPropagation()}
+            <div className="space-y-8">
+              {/* Campaigns with contacts */}
+              {campaigns.filter(c => (c.contacts_count || 0) > 0).length > 0 && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-primary" />
+                    Campaigns with Contacts
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {campaigns.filter(c => (c.contacts_count || 0) > 0).map((campaign) => (
+                      <div
+                        key={campaign.id}
+                        onClick={() => navigate(`/companies/${campaign.id}`)}
+                        className="group relative p-6 rounded-xl border bg-card hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
                       >
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={(e) => openEdit(campaign, e)}>
-                        <Pencil className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCampaignToDelete(campaign.id);
-                        }}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        {/* Menu */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="absolute top-3 right-3 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => openEdit(campaign, e)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCampaignToDelete(campaign.id);
+                              }}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
 
-                  {/* Content */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Folder className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0 pr-8">
-                      <h3 className="font-semibold text-foreground truncate">{campaign.name}</h3>
-                      {campaign.product && (
-                        <p className="text-sm text-muted-foreground truncate">{campaign.product}</p>
-                      )}
-                    </div>
-                  </div>
+                        {/* Content */}
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <Folder className="w-5 h-5 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0 pr-8">
+                            <h3 className="font-semibold text-foreground truncate">{campaign.name}</h3>
+                            {campaign.product && (
+                              <p className="text-sm text-muted-foreground truncate">{campaign.product}</p>
+                            )}
+                          </div>
+                        </div>
 
-                  <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <Building2 className="w-4 h-4" />
-                      {campaign.companies_count || 0} companies
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Users className="w-4 h-4" />
-                      {campaign.contacts_count || 0} contacts
-                    </span>
-                  </div>
+                        <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4" />
+                            {campaign.companies_count || 0} companies
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Users className="w-4 h-4" />
+                            {campaign.contacts_count || 0} contacts
+                          </span>
+                        </div>
 
-                  {campaign.target_region && (
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      Region: {campaign.target_region}
-                    </p>
-                  )}
+                        {campaign.target_region && (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            Region: {campaign.target_region}
+                          </p>
+                        )}
 
-                  <div className="mt-4 pt-3 border-t flex items-center text-sm text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                    View companies
-                    <ArrowRight className="w-4 h-4 ml-1" />
+                        <div className="mt-4 pt-3 border-t flex items-center text-sm text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                          View companies
+                          <ArrowRight className="w-4 h-4 ml-1" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* All other campaigns (no contacts yet) */}
+              {campaigns.filter(c => (c.contacts_count || 0) === 0).length > 0 && (
+                <div>
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-muted-foreground">
+                    <Folder className="w-5 h-5" />
+                    Campaigns in Progress
+                    <span className="text-sm font-normal">({campaigns.filter(c => (c.contacts_count || 0) === 0).length})</span>
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {campaigns.filter(c => (c.contacts_count || 0) === 0).map((campaign) => (
+                      <div
+                        key={campaign.id}
+                        onClick={() => navigate(`/companies/${campaign.id}`)}
+                        className="group relative p-6 rounded-xl border border-dashed bg-card/50 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
+                      >
+                        {/* Menu */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="absolute top-3 right-3 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => openEdit(campaign, e)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCampaignToDelete(campaign.id);
+                              }}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Content */}
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                            <Folder className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0 pr-8">
+                            <h3 className="font-semibold text-foreground truncate">{campaign.name}</h3>
+                            {campaign.product && (
+                              <p className="text-sm text-muted-foreground truncate">{campaign.product}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4" />
+                            {campaign.companies_count || 0} companies
+                          </span>
+                          <span className="flex items-center gap-1.5 text-muted-foreground/60">
+                            <Users className="w-4 h-4" />
+                            No contacts yet
+                          </span>
+                        </div>
+
+                        {campaign.target_region && (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            Region: {campaign.target_region}
+                          </p>
+                        )}
+
+                        <div className="mt-4 pt-3 border-t flex items-center text-sm text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                          Add companies
+                          <ArrowRight className="w-4 h-4 ml-1" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
