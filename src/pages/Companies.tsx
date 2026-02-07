@@ -117,12 +117,29 @@ export default function Companies() {
     }
   }, [campaignId, campaigns, setSelectedCampaign]);
 
-  // Load companies and filter out completed research
-  useEffect(() => {
+  const loadCompanies = useCallback(async () => {
     if (!campaignId) return;
-    loadCompanies();
-    loadCompletedResearch();
-  }, [campaignId]);
+    setIsLoadingCompanies(true);
+    try {
+      const data = await fetchCompanies(campaignId);
+      setCompanies(
+        data.map((c) => ({
+          id: c.id,
+          campaign_id: c.campaign_id,
+          name: c.name,
+          website: c.website ?? undefined,
+          linkedin_url: c.linkedin_url ?? undefined,
+          salesforce_account_id: c.salesforce_account_id ?? undefined,
+          salesforce_campaign_id: c.salesforce_campaign_id ?? undefined,
+          selected: true,
+        })),
+      );
+    } catch {
+      toast.error('Failed to load companies');
+    } finally {
+      setIsLoadingCompanies(false);
+    }
+  }, [campaignId, setCompanies]);
 
   const loadCompletedResearch = useCallback(async () => {
     if (!campaignId || !user?.id) return;
@@ -168,29 +185,41 @@ export default function Companies() {
     }
   }, [campaignId, user?.id]);
 
-  const loadCompanies = useCallback(async () => {
+  // Load companies and filter out completed research
+  useEffect(() => {
     if (!campaignId) return;
-    setIsLoadingCompanies(true);
-    try {
-      const data = await fetchCompanies(campaignId);
-      setCompanies(
-        data.map((c) => ({
-          id: c.id,
-          campaign_id: c.campaign_id,
-          name: c.name,
-          website: c.website ?? undefined,
-          linkedin_url: c.linkedin_url ?? undefined,
-          salesforce_account_id: c.salesforce_account_id ?? undefined,
-          salesforce_campaign_id: c.salesforce_campaign_id ?? undefined,
-          selected: true,
-        })),
-      );
-    } catch {
-      toast.error('Failed to load companies');
-    } finally {
-      setIsLoadingCompanies(false);
-    }
-  }, [campaignId, setCompanies]);
+    loadCompanies();
+    loadCompletedResearch();
+  }, [campaignId, loadCompanies, loadCompletedResearch]);
+
+  // Realtime subscription for company_research updates
+  useEffect(() => {
+    if (!user?.id || !campaignId) return;
+
+    const channel = supabase
+      .channel('companies-research-updates')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'company_research', filter: `user_id=eq.${user.id}` },
+        () => {
+          // Refresh the research data when new records arrive
+          loadCompletedResearch();
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'prospect_research', filter: `user_id=eq.${user.id}` },
+        () => {
+          // Refresh when new prospects arrive
+          loadCompletedResearch();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, campaignId, loadCompletedResearch]);
 
   const handleSalesforceImport = async () => {
     if (!salesforceCampaignId.trim()) {
