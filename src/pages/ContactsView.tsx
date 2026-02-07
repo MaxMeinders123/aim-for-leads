@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ChevronDown,
@@ -80,6 +80,7 @@ export default function ContactsView() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
+  const refreshTimeoutRef = useRef<number | null>(null);
 
   // Set campaign from URL
   useEffect(() => {
@@ -144,11 +145,23 @@ export default function ContactsView() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'prospect_research', filter: `user_id=eq.${user.id}` },
-        () => loadData(),
+        () => {
+          if (refreshTimeoutRef.current) {
+            window.clearTimeout(refreshTimeoutRef.current);
+          }
+          refreshTimeoutRef.current = window.setTimeout(() => {
+            loadData();
+            refreshTimeoutRef.current = null;
+          }, 300);
+        },
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
+      if (refreshTimeoutRef.current) {
+        window.clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
     };
   }, [user?.id, loadData]);
 

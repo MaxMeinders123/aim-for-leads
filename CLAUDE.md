@@ -29,6 +29,11 @@ Frontend (React) → research-proxy edge function → n8n webhook (async)
 
 Research is **always async**. n8n responds immediately with `{"status": "processing"}`. Results arrive via callback edge functions. Frontend listens via Supabase Realtime subscriptions.
 
+### Async UI expectations
+
+- Company research results arrive first via `company_research` inserts; prospect results arrive later via `prospect_research` inserts.
+- The UI should remain in an active "researching/awaiting callbacks" state until both company and prospect callbacks are received (no premature "complete" state).
+
 ## The Pipeline (this order never changes)
 
 1. **Campaign Setup** → SDR defines targeting (product, region, titles, personas, pain points)
@@ -79,6 +84,7 @@ These IDs must ALWAYS be passed through every step. Losing one breaks downstream
 {
   "personal_id": "uuid (for matching response back)",
   "session_id": "uuid (request-level matching)",
+  "user_id": "uuid (optional, used to scope webhook updates)",
   "linkedin_url": "https://linkedin.com/in/...",
   "salesforce_account_id": "001XXXXXXX",
   "salesforce_campaign_id": "701XXXXXXX",
@@ -108,6 +114,7 @@ These IDs must ALWAYS be passed through every step. Losing one breaks downstream
 5. **ID passthrough** - All IDs (campaign_id, company_id, salesforce_*) must flow through every step.
 6. **Supabase edge functions for callbacks** - n8n always POSTs results to edge functions, never directly to frontend.
 7. **personal_id for Clay tracking** - Every prospect gets a UUID personal_id. This is how Clay matches results back.
+8. **Clay must go through edge functions** - Frontend should call `send-prospect-to-clay`; do not POST raw contacts to Clay directly.
 
 ## Preferred Approach
 

@@ -108,6 +108,7 @@ serve(async (req) => {
         const clayPayload = {
           personal_id: personalId,
           session_id: sessionId,
+          user_id,
           linkedin_url: prospect.linkedin_url,
           salesforce_account_id: prospect.salesforce_account_id || prospect.companies?.salesforce_account_id,
           salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.companies?.salesforce_campaign_id,
@@ -125,6 +126,21 @@ serve(async (req) => {
 
         const clayResult = await clayResponse.text();
         console.log("[send-prospect-to-clay] Clay response:", clayResult);
+
+        if (!clayResponse.ok) {
+          await supabase
+            .from("prospect_research")
+            .update({
+              clay_response: { status: clayResponse.status, body: clayResult },
+            })
+            .eq("id", prospectId);
+          results.push({
+            prospect_id: prospectId,
+            success: false,
+            error: `Clay request failed with status ${clayResponse.status}`,
+          });
+          continue;
+        }
 
         // Update prospect with sent status, personal_id, and session_id
         await supabase
