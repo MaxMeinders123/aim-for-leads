@@ -105,14 +105,19 @@ serve(async (req) => {
 
     // Build the EXACT Clay payload that send-prospect-to-clay would send
     const companies = prospect.companies;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const sessionId = crypto.randomUUID();
 
     const clayPayload = {
       personal_id: prospect.personal_id,
+      session_id: sessionId,
+      user_id,
       linkedin_url: prospect.linkedin_url,
       salesforce_account_id:
         prospect.salesforce_account_id || companies?.salesforce_account_id || null,
       salesforce_campaign_id:
         prospect.salesforce_campaign_id || companies?.salesforce_campaign_id || null,
+      callback_webhook: `${supabaseUrl}/functions/v1/clay-webhook`,
     };
 
     return new Response(

@@ -56,6 +56,12 @@ export default function Research() {
   }, [campaignId, campaigns, selectedCampaign, setSelectedCampaign]);
 
   const completedCount = companiesProgress.filter((c) => c.step === 'complete').length;
+  const errorCount = companiesProgress.filter((c) => c.step === 'error').length;
+  const hasPendingCallbacks = companiesProgress.some((c) => c.step === 'awaiting_callback');
+  const hasActiveSteps = companiesProgress.some((c) => c.step === 'company' || c.step === 'people');
+  const hasInFlightWork = hasPendingCallbacks || hasActiveSteps;
+  const isResearching = isRunning || hasInFlightWork;
+  const isAllDone = totalCompanies > 0 && completedCount + errorCount >= totalCompanies && !hasInFlightWork;
   const progressPercentage = totalCompanies > 0 ? Math.round((completedCount / totalCompanies) * 100) : 0;
 
   const toggleExpanded = (companyId: string) => {
@@ -219,12 +225,17 @@ export default function Research() {
 
     setResearchProgress({ isRunning: false });
     isProcessingRef.current = false;
-    toast.success('Research complete!');
   }, [isRunning, companies, selectedCampaign, user, setResearchProgress, updateCompanyProgress, userWebhooks]);
 
   useEffect(() => {
     if (isRunning && !isProcessingRef.current) processCompanies();
   }, [isRunning, processCompanies]);
+
+  useEffect(() => {
+    if (!isRunning && isAllDone) {
+      toast.success('Research complete!');
+    }
+  }, [isRunning, isAllDone]);
 
   // Realtime: company_research inserts
   useEffect(() => {
@@ -382,7 +393,13 @@ export default function Research() {
     <AppLayout>
       <div className="flex flex-col h-full">
         <PageHeader
-          title={isRunning ? 'Researching...' : 'Research Complete'}
+          title={
+            isResearching
+              ? hasPendingCallbacks && !hasActiveSteps
+                ? 'Awaiting Results...'
+                : 'Researching...'
+              : 'Research Complete'
+          }
           subtitle={`${completedCount} of ${totalCompanies} companies${selectedCampaign ? ` - ${selectedCampaign.name}` : ''}`}
           backTo={campaignId ? `/companies/${campaignId}` : '/campaigns'}
           actions={
@@ -398,7 +415,7 @@ export default function Research() {
                   Stop Research
                 </Button>
               )}
-              <Button variant={isRunning ? 'outline' : 'default'} onClick={() => navigate(`/contacts/${campaignId}`)}>
+              <Button variant={isResearching ? 'outline' : 'default'} onClick={() => navigate(`/contacts/${campaignId}`)}>
                 <Users className="w-4 h-4 mr-2" />
                 View Contacts
               </Button>
@@ -454,7 +471,13 @@ export default function Research() {
                         {isLoading && (
                           <p className="text-sm text-muted-foreground flex items-center gap-2">
                             <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse" />
-                            {cp.step === 'company' ? 'Checking company status...' : 'Finding prospects...'}
+                            {cp.step === 'company'
+                              ? 'Checking company status...'
+                              : cp.step === 'awaiting_callback'
+                                ? cp.companyData
+                                  ? 'Awaiting prospect research callback...'
+                                  : 'Awaiting company research callback...'
+                                : 'Finding prospects...'}
                           </p>
                         )}
                         {cp.step === 'complete' && !isExpanded && cp.peopleData?.contacts && (
@@ -526,12 +549,13 @@ export default function Research() {
                       </div>
 
                       {/* Company data skeleton */}
-                      {cp.step === 'company' && (
+                      {(cp.step === 'company' || (cp.step === 'awaiting_callback' && !cp.companyData)) && (
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-primary" />
                             <span className="font-medium flex items-center gap-2">
-                              Researching company <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                              {cp.step === 'company' ? 'Researching company' : 'Awaiting company results'}{' '}
+                              <Loader2 className="w-4 h-4 animate-spin text-primary" />
                             </span>
                           </div>
                           <div className="bg-background rounded-xl p-4 border space-y-3">
@@ -582,12 +606,13 @@ export default function Research() {
                       )}
 
                       {/* People data skeleton */}
-                      {(cp.step === 'people' || cp.step === 'awaiting_callback') && !cp.peopleData && (
+                      {(cp.step === 'people' || cp.step === 'awaiting_callback') && cp.companyData && !cp.peopleData && (
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
                             <Users className="w-4 h-4 text-primary" />
                             <span className="font-medium flex items-center gap-2">
-                              Finding contacts <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                              {cp.step === 'awaiting_callback' ? 'Awaiting contacts' : 'Finding contacts'}{' '}
+                              <Loader2 className="w-4 h-4 animate-spin text-primary" />
                             </span>
                           </div>
                           <div className="grid gap-3">
@@ -672,7 +697,7 @@ export default function Research() {
         </div>
 
         {/* Bottom action bar */}
-        {completedCount > 0 && !isRunning && (
+        {completedCount > 0 && !isRunning && !hasInFlightWork && (
           <div className="px-6 py-4 border-t bg-background">
             <div className="flex items-center justify-between max-w-3xl">
               <Button variant="outline" onClick={() => navigate(campaignId ? `/companies/${campaignId}` : '/campaigns')}>

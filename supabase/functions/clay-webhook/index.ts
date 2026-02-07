@@ -25,6 +25,7 @@ serve(async (req) => {
     const {
       personal_id,
       session_id,    // matches the session_id sent in the outbound request
+      user_id,
       is_duplicate,  // true = duplicate, false/undefined = inserted
       salesforce_url, // URL to the contact in Salesforce
       email,         // enriched email from Clay
@@ -65,10 +66,16 @@ serve(async (req) => {
       if (email) updateFields.email = email;
       if (phone) updateFields.phone = phone;
 
-      const { data: updatedProspect, error: updateError } = await supabase
+      let updateQuery = supabase
         .from("prospect_research")
         .update(updateFields)
-        .eq(matchColumn, matchId)
+        .eq(matchColumn, matchId);
+
+      if (user_id) {
+        updateQuery = updateQuery.eq("user_id", user_id);
+      }
+
+      const { data: updatedProspect, error: updateError } = await updateQuery
         .select()
         .single();
 

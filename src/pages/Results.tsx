@@ -12,6 +12,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useAppStore } from '@/stores/appStore';
+import { sendBulkToClay, sendProspectToClay } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -22,7 +23,7 @@ export default function Results() {
     toggleContactSelection,
     selectAllContacts,
     deselectAllContacts,
-    integrations,
+    user,
     resetCampaignDraft,
     setSelectedCampaign,
     setCampaignStep,
@@ -80,12 +81,6 @@ export default function Results() {
   };
 
   const handleSyncSF = async () => {
-    if (!integrations.clay_webhook_url) {
-      toast.error('Please configure Clay Webhook URL in Settings');
-      navigate('/settings');
-      return;
-    }
-
     const selectedContacts = contacts.filter((c) => c.selected);
     if (selectedContacts.length === 0) {
       toast.error('Please select contacts to sync');
@@ -93,17 +88,10 @@ export default function Results() {
     }
 
     try {
-      const response = await fetch(integrations.clay_webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'send_to_clay',
-          contacts: selectedContacts,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to send to Clay');
-      toast.success(`Sent ${selectedContacts.length} contacts to Clay`);
+      if (!user?.id) throw new Error('User session missing');
+      const selectedIds = selectedContacts.map((contact) => contact.id);
+      const result = await sendBulkToClay(selectedIds, user.id);
+      toast.success(`Sent ${result.sent} of ${selectedContacts.length} contacts to Clay`);
     } catch (error: any) {
       toast.error(error.message || 'Failed to sync');
     }
@@ -122,33 +110,15 @@ export default function Results() {
   };
 
   const handleAddToSalesforce = async (contact: typeof contacts[0]) => {
-    if (!integrations.clay_webhook_url) {
-      toast.error('Please configure Clay Webhook URL in Settings');
-      navigate('/settings');
-      return;
-    }
-
     setSendingToSalesforce(contact.id);
     try {
-      const response = await fetch(integrations.clay_webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'add_to_salesforce',
-          contact: {
-            name: contact.name,
-            title: contact.title,
-            company_name: contact.company_name,
-            email: contact.email,
-            phone: contact.phone,
-            linkedin_url: contact.linkedin_url,
-            priority: contact.priority,
-          },
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to send to Clay');
-      toast.success(`Sent ${contact.name} to Clay for Salesforce`);
+      if (!user?.id) throw new Error('User session missing');
+      const result = await sendProspectToClay(contact.id, user.id);
+      if (result.sent > 0) {
+        toast.success(`Sent ${contact.name} to Clay`);
+      } else {
+        toast.error(result.results?.[0]?.error || 'Failed to send to Clay');
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to send to Clay');
     } finally {
