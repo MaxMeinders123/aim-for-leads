@@ -7,6 +7,26 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+interface ProspectWithCompany {
+  id: string;
+  personal_id: string | null;
+  linkedin_url: string | null;
+  salesforce_account_id: string | null;
+  salesforce_campaign_id: string | null;
+  company_id: string | null;
+  campaign_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  job_title: string | null;
+  companies: {
+    id: string;
+    name: string;
+    salesforce_account_id: string | null;
+    salesforce_campaign_id: string | null;
+    campaign_id: string | null;
+  } | null;
+}
+
 /**
  * Returns the exact payload that would be sent to Clay for the most recent
  * prospect_research record (or a specific one if prospect_id is provided).
@@ -32,78 +52,59 @@ serve(async (req) => {
       );
     }
 
-    // Build query
-    let query = supabase
-      .from("prospect_research")
-      .select(`
+    const selectFields = `
+      id,
+      personal_id,
+      linkedin_url,
+      salesforce_account_id,
+      salesforce_campaign_id,
+      company_id,
+      campaign_id,
+      first_name,
+      last_name,
+      job_title,
+      companies:company_id (
         id,
-        personal_id,
-        linkedin_url,
+        name,
         salesforce_account_id,
         salesforce_campaign_id,
-        company_id,
-        campaign_id,
-        first_name,
-        last_name,
-        job_title,
-        companies:company_id (
-          id,
-          name,
-          salesforce_account_id,
-          salesforce_campaign_id,
-          campaign_id
-        )
-      `)
-      .eq("user_id", user_id)
-      .order("created_at", { ascending: false })
-      .limit(1);
+        campaign_id
+      )
+    `;
+
+    let prospect: ProspectWithCompany | null = null;
 
     if (prospect_id) {
-      query = supabase
+      const { data, error } = await supabase
         .from("prospect_research")
-        .select(`
-          id,
-          personal_id,
-          linkedin_url,
-          salesforce_account_id,
-          salesforce_campaign_id,
-          company_id,
-          campaign_id,
-          first_name,
-          last_name,
-          job_title,
-          companies:company_id (
-            id,
-            name,
-            salesforce_account_id,
-            salesforce_campaign_id,
-            campaign_id
-          )
-        `)
+        .select(selectFields)
         .eq("id", prospect_id)
         .eq("user_id", user_id)
         .single();
+      
+      if (error) throw error;
+      prospect = data as ProspectWithCompany;
+    } else {
+      const { data, error } = await supabase
+        .from("prospect_research")
+        .select(selectFields)
+        .eq("user_id", user_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      
+      if (error) throw error;
+      prospect = (data as ProspectWithCompany[])?.[0] ?? null;
     }
 
-    const { data: prospect, error } = prospect_id
-      ? await query
-      : await query.then((res) => ({ data: res.data?.[0] ?? null, error: res.error }));
-
-    if (error || !prospect) {
+    if (!prospect) {
       return new Response(
-        JSON.stringify({ error: "No prospect found", details: error?.message }),
+        JSON.stringify({ error: "No prospect found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Build the EXACT Clay payload that send-prospect-to-clay would send
-    const companies = prospect.companies as {
-      id: string;
-      name: string;
-      salesforce_account_id: string | null;
-      salesforce_campaign_id: string | null;
-      campaign_id: string | null;
-    } | null;
+    const companies = prospect.companies;
 
     const clayPayload = {
       personal_id: prospect.personal_id,

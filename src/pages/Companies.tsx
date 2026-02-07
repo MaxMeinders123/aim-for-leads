@@ -13,6 +13,7 @@ import {
   Rocket,
   Plus,
   Users,
+  Trash2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -25,7 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAppStore, type Company, type CompanyResearchProgress } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchCompanies, addManualCompany, importSalesforceCompanies } from '@/services/api';
+import { fetchCompanies, addManualCompany, importSalesforceCompanies, deleteMultipleCompanies } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -58,6 +59,7 @@ export default function Companies() {
   // Track completed research domains to filter them out
   const [completedDomains, setCompletedDomains] = useState<Set<string>>(new Set());
   const [isAddingManual, setIsAddingManual] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Set selected campaign from URL
   useEffect(() => {
@@ -207,6 +209,25 @@ export default function Companies() {
     navigate(`/research/${campaignId}`);
   };
 
+  const handleDeleteSelected = async () => {
+    const selectedIds = pendingCompanies.filter(c => c.selected).map(c => c.id);
+    if (selectedIds.length === 0) {
+      toast.error('Please select companies to delete');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteMultipleCompanies(selectedIds);
+      setCompanies(companies.filter(c => !selectedIds.includes(c.id)));
+      toast.success(`Deleted ${selectedIds.length} ${selectedIds.length === 1 ? 'company' : 'companies'}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete companies');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Helper to extract domain from website URL
   const getDomain = (website?: string) => {
     if (!website) return null;
@@ -267,9 +288,25 @@ export default function Companies() {
               else deselectAllCompanies();
             }}
           />
-          <span className="text-sm font-medium text-muted-foreground">
+          <span className="text-sm font-medium text-muted-foreground flex-1">
             {companyList.filter((c) => c.selected).length} of {companyList.length} selected
           </span>
+          {companyList.some((c) => c.selected) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDeleteSelected}
+              disabled={isDeleting}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {isDeleting ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-1" />
+              )}
+              Delete Selected
+            </Button>
+          )}
         </div>
 
         {/* Rows */}
