@@ -29,33 +29,42 @@
 
 ---
 
-## Clay - Next Steps (Coming Soon)
+## Clay Integration - DONE
 
-These don't have to happen today but are needed to close the loop:
+All three items are now built and working:
 
 | Item | What It Does | Status |
 |------|-------------|--------|
-| **Campaign ID** | Carry across the `salesforce_campaign_id` alongside the account ID so Clay knows which campaign the prospect belongs to | Ready to wire up |
-| **Session ID** | Include a session/request ID in the HTTP POST so we can match the outbound request to the inbound Clay response | To build |
-| **Webhook back** | Set up a webhook endpoint to receive enriched data back from Clay (email, phone, etc.) and write it back to the database | To build |
+| **Campaign ID** | `salesforce_campaign_id` flows through the entire pipeline to Clay | Done |
+| **Session ID** | Unique `session_id` generated per Clay request for matching callbacks | Done |
+| **Webhook back** | `clay-webhook` edge function receives enriched data (email, phone, SF URL) and updates the database | Done |
 
-### What the Clay payload currently sends:
+### Full Clay payload (what gets sent):
 ```json
 {
   "personal_id": "uuid",
+  "session_id": "uuid",
   "linkedin_url": "https://linkedin.com/in/...",
   "salesforce_account_id": "001XXXXXXX",
-  "salesforce_campaign_id": "701XXXXXXX"
+  "salesforce_campaign_id": "701XXXXXXX",
+  "callback_webhook": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/clay-webhook"
 }
 ```
 
-### What we still need to add:
+### What Clay sends back:
 ```json
 {
-  "session_id": "unique-request-id-for-matching",
-  "callback_webhook": "https://our-supabase.co/functions/v1/receive-clay-results"
+  "personal_id": "uuid",
+  "session_id": "uuid",
+  "email": "enriched@example.com",
+  "phone": "+1-555-0000",
+  "is_duplicate": false,
+  "salesforce_url": "https://sf.salesforce.com/003XXXXX"
 }
 ```
+
+### To configure in Clay:
+See `docs/AIM-FOR-LEADS-PRODUCT-DOCUMENT.md` for full Clay setup instructions.
 
 ---
 
