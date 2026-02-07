@@ -132,37 +132,58 @@ Enriched prospects can be exported to CSV or synced back to Salesforce with all 
 
 ---
 
-## Clay Integration - Current State & Next Steps
+## Clay Integration - FULLY BUILT
 
-### What currently gets sent to Clay:
+The complete Clay round-trip is implemented and working.
+
+### What gets sent to Clay (outbound via `send-prospect-to-clay` edge function):
 
 | Field | Description | Status |
 |-------|-------------|--------|
 | `personal_id` | Unique UUID per prospect for matching | Sending |
+| `session_id` | Unique request ID for matching callback to request | Sending |
 | `linkedin_url` | Prospect's LinkedIn profile URL | Sending |
 | `salesforce_account_id` | Salesforce Account ID for the company | Sending |
 | `salesforce_campaign_id` | Salesforce Campaign ID | Sending |
+| `callback_webhook` | URL for Clay to POST results back | Sending |
 
-### What still needs to be built:
+### What comes back from Clay (inbound via `clay-webhook` edge function):
 
-| Item | Description | Why It's Needed |
-|------|-------------|-----------------|
-| **Campaign ID carry-across** | Ensure campaign_id is reliably passed through the full pipeline to Clay | So Clay and downstream systems know which campaign generated the prospect |
-| **Session ID** | Include a unique session/request ID in the HTTP POST to Clay | So we can match the outbound request to the inbound Clay response when it comes back |
-| **Webhook back from Clay** | Build a `receive-clay-results` edge function to accept enriched data back from Clay | So enriched emails, phones, and statuses are written back to the database automatically instead of manually |
+| Field | Description | Status |
+|-------|-------------|--------|
+| `personal_id` | Matches outbound request | Receiving |
+| `session_id` | Alternative match key | Receiving |
+| `email` | Enriched email address | Receiving |
+| `phone` | Enriched phone number | Receiving |
+| `is_duplicate` | Whether contact already exists in Salesforce | Receiving |
+| `salesforce_url` | URL to the contact in Salesforce | Receiving |
 
-### Target Clay payload (once complete):
+### Full Clay payload (what gets sent):
 
 ```json
 {
   "personal_id": "uuid",
+  "session_id": "uuid",
   "linkedin_url": "https://linkedin.com/in/prospect",
   "salesforce_account_id": "001XXXXXXX",
   "salesforce_campaign_id": "701XXXXXXX",
-  "session_id": "unique-request-id-for-matching",
-  "callback_webhook": "https://our-supabase.co/functions/v1/receive-clay-results"
+  "callback_webhook": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/clay-webhook"
 }
 ```
+
+### How to configure Clay to complete the loop:
+
+In your Clay table, set up these columns to receive the webhook data:
+1. **personal_id** (text) - Map from incoming webhook field `personal_id`
+2. **session_id** (text) - Map from incoming webhook field `session_id`
+3. **linkedin_url** (text) - Map from incoming webhook field `linkedin_url`
+4. **salesforce_account_id** (text) - Map from incoming webhook field `salesforce_account_id`
+5. **salesforce_campaign_id** (text) - Map from incoming webhook field `salesforce_campaign_id`
+
+Then set up a Clay webhook action (HTTP POST) at the end of your enrichment flow that sends results back:
+- **URL**: The `callback_webhook` value from the incoming data
+- **Method**: POST
+- **Body**: `{ "personal_id": <personal_id>, "session_id": <session_id>, "email": <enriched_email>, "phone": <enriched_phone>, "is_duplicate": <boolean>, "salesforce_url": <sf_contact_url> }`
 
 ---
 
@@ -262,10 +283,13 @@ Row Level Security (RLS) is enforced at the database level. Every table filters 
 
 ## Roadmap
 
-### Near Term (Clay Loop)
-1. **Campaign ID carry-across** — Ensure reliable campaign tracking through to Clay
-2. **Session ID for request matching** — Match outbound POST to inbound Clay response
-3. **Webhook back from Clay** — Auto-receive enriched contact data into the platform
+### Completed
+1. ~~**Campaign ID carry-across**~~ — `salesforce_campaign_id` flows through entire pipeline to Clay
+2. ~~**Session ID for request matching**~~ — `session_id` generated per Clay request, matched on callback
+3. ~~**Webhook back from Clay**~~ — `clay-webhook` edge function auto-receives enriched data
+4. ~~**LinkedIn URL validation**~~ — URLs validated in n8n and edge function, tracked as verified/unverified
+5. ~~**SerpAPI LinkedIn fallback**~~ — Contacts without LinkedIn URLs get SerpAPI search enrichment
+6. ~~**Deduplication**~~ — Duplicate prospects (same name + company) are skipped
 
 ### Medium Term (Usability)
 4. **Duplicate company detection** — Flag companies already researched in other campaigns, option to reuse existing research

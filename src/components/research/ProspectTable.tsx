@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Users, Linkedin, Send, CheckCircle2, Loader2, ExternalLink } from 'lucide-react';
+import { Users, Linkedin, Send, CheckCircle2, Loader2, ExternalLink, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatusBadge } from './StatusBadge';
@@ -23,6 +23,11 @@ interface Prospect {
   salesforce_url?: string | null;
   sent_to_clay: boolean;
   sent_to_clay_at: string | null;
+  raw_data?: {
+    linkedin_validated?: boolean;
+    linkedin_source?: string;
+    [key: string]: unknown;
+  } | null;
 }
 
 interface ProspectTableProps {
@@ -296,15 +301,25 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                   
                   {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
-                    {/* LinkedIn Link */}
+                    {/* LinkedIn Link with validation status */}
                     {prospect.linkedin_url && (
                       <a
                         href={prospect.linkedin_url.startsWith('http') ? prospect.linkedin_url : `https://${prospect.linkedin_url}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:text-primary/80 flex items-center gap-1 text-sm"
+                        title={
+                          prospect.raw_data?.linkedin_validated
+                            ? `Verified LinkedIn profile (source: ${prospect.raw_data?.linkedin_source || 'search'})`
+                            : 'LinkedIn URL not verified - may need manual check'
+                        }
                       >
                         <Linkedin className="h-4 w-4" />
+                        {prospect.raw_data?.linkedin_validated === true ? (
+                          <ShieldCheck className="h-3 w-3 text-green-500" />
+                        ) : prospect.raw_data?.linkedin_validated === false ? (
+                          <AlertTriangle className="h-3 w-3 text-yellow-500" />
+                        ) : null}
                       </a>
                     )}
 
