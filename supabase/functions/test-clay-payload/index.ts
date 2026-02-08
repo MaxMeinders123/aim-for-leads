@@ -83,7 +83,12 @@ serve(async (req) => {
         .single();
       
       if (error) throw error;
-      prospect = data as ProspectWithCompany;
+      // Handle Supabase returning array for joined table
+      const rawData = data as any;
+      prospect = {
+        ...rawData,
+        companies: Array.isArray(rawData.companies) ? rawData.companies[0] : rawData.companies
+      };
     } else {
       const { data, error } = await supabase
         .from("prospect_research")
@@ -93,7 +98,13 @@ serve(async (req) => {
         .limit(1);
       
       if (error) throw error;
-      prospect = (data as ProspectWithCompany[])?.[0] ?? null;
+      const rawData = (data as any[])?.[0];
+      if (rawData) {
+        prospect = {
+          ...rawData,
+          companies: Array.isArray(rawData.companies) ? rawData.companies[0] : rawData.companies
+        };
+      }
     }
 
     if (!prospect) {
@@ -103,10 +114,10 @@ serve(async (req) => {
       );
     }
 
-    // Build the EXACT Clay payload that send-prospect-to-clay would send
+    // Build the EXACT Clay payload that would be sent to Clay
     const companies = prospect.companies;
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const sessionId = crypto.randomUUID();
+    const baseUrl = Deno.env.get("SUPABASE_URL")!;
 
     const clayPayload = {
       personal_id: prospect.personal_id,
@@ -117,7 +128,7 @@ serve(async (req) => {
         prospect.salesforce_account_id || companies?.salesforce_account_id || null,
       salesforce_campaign_id:
         prospect.salesforce_campaign_id || companies?.salesforce_campaign_id || null,
-      callback_webhook: `${supabaseUrl}/functions/v1/clay-webhook`,
+      callback_webhook: `${baseUrl}/functions/v1/clay-webhook`,
     };
 
     return new Response(
