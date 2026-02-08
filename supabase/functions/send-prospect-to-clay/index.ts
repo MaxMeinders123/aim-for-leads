@@ -104,14 +104,28 @@ serve(async (req) => {
         // Build the callback URL so Clay knows where to send results
         const callbackWebhook = `${supabaseUrl}/functions/v1/clay-webhook`;
 
-        // Build Clay payload - gets salesforce IDs from prospect or companies table
+        // Resolve Salesforce campaign ID from company_research if missing
+        let resolvedSalesforceCampaignId =
+          prospect.salesforce_campaign_id || prospect.companies?.salesforce_campaign_id;
+
+        if (!resolvedSalesforceCampaignId && prospect.company_research_id) {
+          const { data: companyResearch } = await supabase
+            .from("company_research")
+            .select("salesforce_campaign_id")
+            .eq("id", prospect.company_research_id)
+            .maybeSingle();
+
+          resolvedSalesforceCampaignId = companyResearch?.salesforce_campaign_id || null;
+        }
+
+        // Build Clay payload - gets salesforce IDs from prospect or related tables
         const clayPayload = {
           personal_id: personalId,
           session_id: sessionId,
           user_id,
           linkedin_url: prospect.linkedin_url,
           salesforce_account_id: prospect.salesforce_account_id || prospect.companies?.salesforce_account_id,
-          salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.companies?.salesforce_campaign_id,
+          salesforce_campaign_id: resolvedSalesforceCampaignId,
           callback_webhook: callbackWebhook,
         };
 
