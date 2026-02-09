@@ -1,0 +1,500 @@
+{
+  "name": "Prospect Research (SerpAPI LinkedIn Discovery)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prospect-research-serpapi",
+        "responseMode": "onReceived",
+        "responseData": "={\"status\": \"processing\", \"message\": \"Prospect research (SerpAPI) started\", \"user_id\": \"{{ $json.body.user_id }}\", \"company_domain\": \"{{ $json.body.company_domain }}\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -200,
+        400
+      ],
+      "id": "d8a0a0af-3bfb-42c7-bf15-8d941dba0357",
+      "name": "Prospect Research Webhook",
+      "webhookId": "20ba43e9-4ae8-4af1-9bc0-555259caf26b"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a B2B prospect researcher specializing in finding decision-makers at target companies.\n\nYour job: find 10-15 relevant people who currently work at the target company.\n\nRESPOND WITH JSON ONLY (no markdown fences, no prose):\n{\n  \"status\": \"completed\",\n  \"company\": \"company name\",\n  \"people\": [\n    {\n      \"full_name\": \"First Last (exactly as shown on LinkedIn/company website)\",\n      \"job_title\": \"their exact current title\",\n      \"department\": \"IT | Engineering | Operations | Security | Finance | Management | Other\",\n      \"seniority\": \"Strategic | Operational | Influencer\",\n      \"persona_match\": \"Primary | Secondary | Tertiary\",\n      \"why_relevant\": \"1-2 sentences explaining why this person matters for the campaign\",\n      \"identifying_details\": \"city, university, previous employer, or any other distinguishing detail you found\"\n    }\n  ]\n}\n\nSEARCH STRATEGY:\n1. Find the company LinkedIn page and browse their /people section\n2. Search for specific role titles at the company: \"[title] [company] site:linkedin.com\"\n3. Check the company website for leadership/team pages\n4. Cross-reference: a person appearing in 2+ sources is more likely real and current\n5. Check job postings - hiring managers listed on job posts are confirmed current employees\n\nQUALITY RULES:\n- Every person MUST currently work at the target company (not former employees)\n- Exclude: board members, advisors, non-executive directors, interns, junior staff, support/helpdesk\n- Include CEOs/CFOs ONLY if they have direct technical/IT responsibility\n- Use the person's name exactly as it appears in your sources (preserve accents: René not Rene)\n- Include identifying_details for EVERY person - this is critical for matching them on LinkedIn later\n- If you can only find 5-6 solid people, that is fine - quality over quantity\n- If unsure about someone, do NOT include them\n\nPRIORITY ORDER:\n1. People whose titles match the campaign's targetTitles (Primary)\n2. People whose roles match the campaign's targetPersonas (Secondary)\n3. People in adjacent roles who influence buying decisions (Tertiary)"
+            },
+            {
+              "content": "=Find relevant decision-makers at {{ $json.body.company.name }} ({{ $json.body.company.website }})\n\nCampaign: {{ $json.body.campaign.campaignName }}\nProduct: {{ $json.body.campaign.product }}\nRegion: {{ $json.body.campaign.targetRegion }}\nTech focus: {{ $json.body.campaign.techFocus }}\nTarget titles: {{ $json.body.campaign.targetTitles }}\nTarget personas: {{ $json.body.campaign.targetPersonas }}\nPain points: {{ $json.body.campaign.painPoints }}\n\nCompany research context:\n{{ JSON.stringify($json.body.companyResearch) }}\n\nReturn JSON only. Do NOT include LinkedIn URLs - we will find those separately."
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "high"
+          }
+        },
+        "options": {
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "high"
+            }
+          },
+          "backgroundMode": {
+            "values": {
+              "enabled": true,
+              "timeout": 3000
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        80,
+        400
+      ],
+      "id": "f18d2a92-fffb-425f-8178-a2a42d3b37cc",
+      "name": "GPT: Find People",
+      "credentials": {
+        "openAiApi": {
+          "id": "MvQi1874NPMQ2ug7",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse GPT output and split into individual person items\n// Passes through all webhook IDs for downstream use\nconst aiOutput = $input.item.json;\nlet parsed;\n\ntry {\n  const text = aiOutput.output?.[0]?.content?.[0]?.text || aiOutput.text || JSON.stringify(aiOutput);\n  try {\n    parsed = JSON.parse(text);\n  } catch {\n    const jsonMatch = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n    if (jsonMatch) {\n      parsed = JSON.parse(jsonMatch[1].trim());\n    } else {\n      // Try to find JSON object in the text\n      const objMatch = text.match(/\\{[\\s\\S]*\\}/);\n      parsed = JSON.parse(objMatch[0]);\n    }\n  }\n} catch (e) {\n  parsed = { status: 'error', people: [] };\n}\n\nconst webhookItems = $items('Prospect Research Webhook');\nconst webhook = webhookItems[0]?.json?.body || {};\n\n// Clean domain: strip protocol, www, and trailing path\nconst rawWebsite = webhook.company?.website || '';\nconst cleanDomain = rawWebsite\n  .replace(/^https?:\\/\\//, '')\n  .replace(/^www\\./, '')\n  .split('/')[0];\n\nconst people = parsed.people || [];\n\nif (people.length === 0) {\n  throw new Error('GPT returned 0 people - check prompt or company name');\n}\n\nreturn people.map(p => ({\n  json: {\n    full_name: p.full_name,\n    job_title: p.job_title,\n    department: p.department || '',\n    seniority: p.seniority,\n    persona_match: p.persona_match,\n    why_relevant: p.why_relevant,\n    identifying_details: p.identifying_details || '',\n    company_name: webhook.company?.name || '',\n    company_domain: cleanDomain,\n    target_region: webhook.campaign?.targetRegion || '',\n    user_id: webhook.user_id,\n    campaign_id: webhook.campaign_id,\n    company_research_id: webhook.company_research_id,\n    company_id: webhook.company_id,\n    salesforce_account_id: webhook.salesforce_account_id,\n    salesforce_campaign_id: webhook.salesforce_campaign_id\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        400
+      ],
+      "id": "a8e4c08c-e0a0-48f8-b186-ef1396d48748",
+      "name": "Code: Split People"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate multiple search patterns per person for SerpAPI\n// Patterns go from precise to broad - first match wins\nconst person = $json;\nconst fullName = (person.full_name || '').trim();\nconst nameParts = fullName.split(' ');\nconst firstName = nameParts[0] || '';\nconst lastName = nameParts.slice(1).join(' ') || '';\n\n// Remove accents for European names (Dutch, German, French, etc.)\nconst removeAccents = (str) => {\n  return str.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');\n};\n\n// Generate name variations (preserving original + accent-free)\nconst nameVariations = [\n  fullName,\n  removeAccents(fullName)\n].filter((v, i, arr) => arr.indexOf(v) === i);\n\nconst companyName = person.company_name || '';\nconst companyDomain = person.company_domain || '';\n// First meaningful word of company name (skip articles)\nconst companyWords = companyName.split(/[\\s\\-&,]+/).filter(w => !['de', 'het', 'the', 'van', 'der', 'en', 'and', 'of'].includes(w.toLowerCase()));\nconst companyFirstWord = companyWords[0] || companyName.split(' ')[0];\n// Domain name without TLD\nconst domainName = companyDomain.replace(/\\.(com|nl|co\\.uk|de|org|be|fr|io|net|eu|tech|cloud|ai).*/, '');\n\nconst jobTitle = person.job_title || '';\nconst region = person.target_region || '';\nconst details = person.identifying_details || '';\n\n// Build search patterns (precision → broad)\nconst patterns = [];\n\n// 1. Exact name + full company name (most precise)\npatterns.push(`site:linkedin.com/in \"${nameVariations[0]}\" \"${companyName}\"`);\n\n// 2. Exact name + domain name\nif (domainName && domainName !== companyName.toLowerCase()) {\n  patterns.push(`site:linkedin.com/in \"${nameVariations[0]}\" \"${domainName}\"`);\n}\n\n// 3. Accent-free name + company (for European names like René → Rene)\nif (nameVariations.length > 1) {\n  patterns.push(`site:linkedin.com/in \"${nameVariations[1]}\" \"${companyName}\"`);\n}\n\n// 4. Name + company first word + job title keywords (helps disambiguate common names)\nconst titleKeywords = jobTitle.split(/[\\s\\/,&()]+/).filter(w => w.length > 2).slice(0, 2).join(' ');\nif (titleKeywords) {\n  patterns.push(`site:linkedin.com/in \"${firstName} ${lastName}\" \"${companyFirstWord}\" ${titleKeywords}`);\n}\n\n// 5. Name + company first word (looser company match)\npatterns.push(`site:linkedin.com/in \"${firstName} ${lastName}\" ${companyFirstWord}`);\n\n// 6. Name + domain (broadest structured search)\npatterns.push(`site:linkedin.com/in ${firstName} ${lastName} ${domainName}`);\n\n// 7. Name + region (geographic fallback)\nif (region) {\n  patterns.push(`site:linkedin.com/in \"${firstName} ${lastName}\" ${region}`);\n}\n\n// 8. Name + identifying details (university, city, previous employer)\nif (details && details.length > 5) {\n  const detailWords = details.split(/[\\s,;]+/).filter(w => w.length > 3).slice(0, 2).join(' ');\n  if (detailWords) {\n    patterns.push(`site:linkedin.com/in \"${firstName} ${lastName}\" ${detailWords}`);\n  }\n}\n\n// Deduplicate and limit to 8 patterns max\nconst uniquePatterns = [...new Set(patterns)].slice(0, 8);\n\nreturn [{\n  json: {\n    ...person,\n    search_patterns: uniquePatterns,\n    current_pattern_index: 0,\n    attempt_count: 0,\n    max_attempts: uniquePatterns.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        400
+      ],
+      "id": "1a091e99-6e0a-40cd-877e-0a51e9196d70",
+      "name": "Code: Generate Search Patterns"
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.search_patterns[$json.current_pattern_index] }}"
+            },
+            {
+              "name": "num",
+              "value": "20"
+            },
+            {
+              "name": "api_key",
+              "value": "={{ $env.SERPAPI_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        760,
+        400
+      ],
+      "id": "7da03654-d8ad-46a4-959e-6fe549914052",
+      "name": "HTTP: SerpAPI Search",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract top 10 LinkedIn profile candidates from SerpAPI results\n// Deduplicates by URL and preserves search context for AI validation\nconst serpRaw = $input.item.json;\nconst serp = typeof serpRaw === 'string' ? JSON.parse(serpRaw) : serpRaw;\nconst organic = serp.organic_results || [];\n\nconst personItems = $items('Code: Generate Search Patterns');\nconst person = personItems[$itemIndex]?.json || {};\n\n// Handle SerpAPI errors\nif (serp.error) {\n  return [{\n    json: {\n      person: person,\n      candidates: [],\n      no_results: true,\n      error: serp.error\n    }\n  }];\n}\n\n// Extract LinkedIn /in/ URLs, deduplicate\nconst seen = new Set();\nconst candidates = organic\n  .filter(r => {\n    if (!r.link || !r.link.includes('linkedin.com/in/')) return false;\n    const cleanUrl = r.link.split('?')[0].split('#')[0].replace(/\\/$/, '').toLowerCase();\n    if (seen.has(cleanUrl)) return false;\n    seen.add(cleanUrl);\n    return true;\n  })\n  .slice(0, 10)\n  .map((r, idx) => ({\n    url: r.link.split('?')[0].split('#')[0].replace(/\\/$/, ''),\n    title: r.title || '',\n    snippet: r.snippet || '',\n    position: r.position || idx + 1\n  }));\n\nif (candidates.length === 0) {\n  return [{\n    json: {\n      person: person,\n      candidates: [],\n      no_results: true\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    person: person,\n    candidates: candidates,\n    search_pattern_used: person.search_patterns[person.current_pattern_index],\n    no_results: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        400
+      ],
+      "id": "2f854481-042e-42fc-958c-a0c2eac59e89",
+      "name": "Code: Extract Candidates"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4o-mini"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a LinkedIn profile matcher for B2B sales prospecting. Your job: analyze Google search results and identify which LinkedIn profile belongs to the target person.\n\nReturn ONLY valid JSON in this EXACT format:\n{\n  \"linkedin_url\": \"full_url_or_empty_string\",\n  \"confidence\": 0-100,\n  \"reason\": \"brief explanation of your scoring\"\n}\n\nSCORING RULES (add points):\n- Exact full name in profile title: +35 points\n- Close name match (accent variation like René/Rene, missing middle name, 1-2 chars different): +25 points\n- Partial name (first name + last initial visible): +15 points\n- Exact company name in title or snippet: +30 points\n- Company subsidiary, abbreviation, or parent company in snippet: +20 points\n- Company domain visible in snippet: +15 points\n- Job title keywords match (e.g. \"Manager IT\" matches \"IT Manager\"): +15 points\n- Department match (e.g. both mention IT/Infrastructure): +10 points\n- Geographic match (same country, region, or city): +10 points\n- Search result position 1-3: +5 points\n\nPENALTY RULES (subtract points):\n- Profile shows DIFFERENT company as current employer: -30 points\n- Name matches but clearly wrong person (different country + different industry): -25 points\n- Profile slug looks auto-generated (random characters, no real name): -10 points\n\nDECISION RULES:\n- Minimum 65 points to return a URL\n- If best match < 65 points, return empty string for linkedin_url\n- If multiple candidates score >= 65, return the HIGHEST scoring one\n- Handle European name variations: \"René\" = \"Rene\", \"Müller\" = \"Mueller\", \"van der Berg\" = \"van-der-berg\"\n- Handle company name variations: parent/subsidiary names, abbreviations, trading names\n- When in doubt, return empty string - a missed match is better than a wrong match"
+            },
+            {
+              "content": "=Find the correct LinkedIn profile for this person:\n\nName: {{ $json.person.full_name }}\nJob Title: {{ $json.person.job_title }}\nDepartment: {{ $json.person.department }}\nCompany: {{ $json.person.company_name }}\nCompany Domain: {{ $json.person.company_domain }}\nRegion: {{ $json.person.target_region }}\nIdentifying Details: {{ $json.person.identifying_details }}\n\nSearch Pattern Used: {{ $json.search_pattern_used }}\n\nCandidates Found ({{ $json.candidates.length }}):\n{{ JSON.stringify($json.candidates, null, 2) }}\n\nAnalyze each candidate using the scoring rules. Return the best match or empty string if none qualifies."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 500,
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1160,
+        400
+      ],
+      "id": "571cd72f-919d-4277-a7e3-60e24ef18588",
+      "name": "GPT-4o-mini: Validate Match",
+      "credentials": {
+        "openAiApi": {
+          "id": "MvQi1874NPMQ2ug7",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI validation result, validate LinkedIn URL format, merge back with person data\n// This replaces both the old \"Merge AI Validation\" + \"HTTP Validate URL\" + \"Check URL Status\" nodes\n// LinkedIn blocks HEAD requests, so we validate format only (regex-based)\nconst validation = $input.item.json;\nlet aiResult;\n\ntry {\n  const text = validation.output?.[0]?.content?.[0]?.text || \n               validation.choices?.[0]?.message?.content ||\n               validation.text ||\n               JSON.stringify(validation);\n  // Extract JSON from response (handles extra text around the JSON)\n  let jsonText = text;\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) jsonText = jsonMatch[0];\n  aiResult = JSON.parse(jsonText);\n} catch (e) {\n  aiResult = { \n    linkedin_url: '', \n    confidence: 0, \n    reason: 'AI response parse error' \n  };\n}\n\nconst candidateItems = $items('Code: Extract Candidates');\nconst candidate = candidateItems[$itemIndex]?.json || {};\nconst person = candidate.person || {};\n\n// Handle no search results case\nif (candidate.no_results) {\n  return [{\n    json: {\n      ...person,\n      linkedin: '',\n      match_confidence: 0,\n      match_reason: candidate.error ? `SerpAPI error: ${candidate.error}` : 'No LinkedIn profiles found in search results',\n      linkedin_source: 'serpapi_not_found',\n      linkedin_validated: false,\n      validation_status: 'no_results',\n      attempt_count: (person.attempt_count || 0) + 1\n    }\n  }];\n}\n\n// Validate LinkedIn URL format (no HTTP HEAD - LinkedIn blocks it)\nlet url = (aiResult.linkedin_url || '').trim();\nconst linkedinPattern = /^https?:\\/\\/(www\\.)?linkedin\\.com\\/in\\/[a-zA-Z0-9\\-_%]+\\/?$/;\n\n// Normalize URL\nif (url && (url.startsWith('linkedin.com') || url.startsWith('www.linkedin.com'))) {\n  url = 'https://' + url;\n}\nurl = url.replace(/\\/$/, '');\n\nconst formatValid = url ? linkedinPattern.test(url) : false;\n\n// Check for obviously fake slugs (too short, no hyphens, looks auto-generated)\nlet looksConstructed = false;\nif (formatValid) {\n  const slug = url.split('/in/')[1] || '';\n  // Slugs like \"john\" (single word, < 5 chars) are suspicious\n  looksConstructed = slug.length < 4 || /^[a-z]+$/i.test(slug) && slug.length < 8;\n}\n\nif (url && (!formatValid || looksConstructed)) {\n  return [{\n    json: {\n      ...person,\n      linkedin: '',\n      match_confidence: 0,\n      match_reason: looksConstructed ? `URL slug looks constructed: ${url}` : `Invalid URL format: ${url}`,\n      linkedin_source: 'serpapi',\n      linkedin_validated: false,\n      validation_status: 'format_invalid',\n      attempt_count: (person.attempt_count || 0) + 1\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...person,\n    linkedin: formatValid ? url : '',\n    match_confidence: aiResult.confidence || 0,\n    match_reason: aiResult.reason || 'No match found',\n    linkedin_source: formatValid ? 'serpapi' : 'serpapi_not_found',\n    linkedin_validated: formatValid && (aiResult.confidence || 0) >= 65,\n    validation_status: 'validated',\n    attempt_count: (person.attempt_count || 0) + 1\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        400
+      ],
+      "id": "4be4a46b-1665-4da1-baae-0ce03213dcb0",
+      "name": "Code: Merge & Validate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.linkedin }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.match_confidence }}",
+              "rightValue": "65",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        400
+      ],
+      "id": "59dd0fa2-9be0-4b5f-b73a-9c0d3095c6fd",
+      "name": "IF: Valid Match?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine if we should retry with the next search pattern or give up\nconst person = $json;\nconst currentIndex = person.current_pattern_index || 0;\nconst attemptCount = person.attempt_count || 0;\nconst maxAttempts = person.max_attempts || 8;\nconst patterns = person.search_patterns || [];\n\n// Exhausted all patterns - send to output as failed\nif (attemptCount >= maxAttempts || currentIndex >= patterns.length - 1) {\n  return [{\n    json: {\n      ...person,\n      linkedin: '',\n      match_confidence: 0,\n      search_status: 'exhausted',\n      match_reason: `Searched ${attemptCount} patterns, no confident match found`,\n      linkedin_source: 'serpapi_not_found',\n      linkedin_validated: false\n    }\n  }];\n}\n\n// Try next pattern\nreturn [{\n  json: {\n    ...person,\n    current_pattern_index: currentIndex + 1,\n    search_status: 'retrying',\n    linkedin: '',\n    match_confidence: 0\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        640
+      ],
+      "id": "34f606ec-018b-457d-b6ac-cb33dcdb03e5",
+      "name": "Code: Retry Next Pattern"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.search_status }}",
+              "rightValue": "retrying",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        640
+      ],
+      "id": "189d1451-3bd7-4662-ad25-347eb10e65a7",
+      "name": "IF: Retry?"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        400
+      ],
+      "id": "807a3551-561c-4823-9dd4-ae89825f5818",
+      "name": "Aggregate: All Prospects"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format final payload for receive-prospect-results edge function\n// Key fixes:\n// - prospect field is JSON stringified (edge function JSON.parses it)\n// - includes status at top level\n// - includes all IDs for downstream passthrough\n// - includes linkedin_source and linkedin_validated per contact\n// - includes failed prospects too (edge function inserts them with null URL)\nconst all = $input.item.json;\nconst items = all.items || [];\n\nconst webhookItems = $items('Prospect Research Webhook');\nconst webhook = webhookItems[0]?.json?.body || {};\n\n// Split into matched vs unmatched\nconst matched = items.filter(i => i.linkedin && i.match_confidence >= 65);\nconst unmatched = items.filter(i => !i.linkedin || i.match_confidence < 65);\n\n// Format ALL contacts for the edge function (matched + unmatched)\n// The edge function inserts all of them - unmatched ones get null linkedin_url\n// This way the SDR can see everyone found and manually review unmatched ones\nconst formatContact = (person, hasLinkedin) => {\n  const nameParts = (person.full_name || '').split(' ');\n  return {\n    first_name: nameParts[0] || '',\n    last_name: nameParts.slice(1).join(' ') || '',\n    job_title: person.job_title || '',\n    linkedin: hasLinkedin ? person.linkedin : '',\n    linkedin_source: person.linkedin_source || (hasLinkedin ? 'serpapi' : 'serpapi_not_found'),\n    linkedin_validated: person.linkedin_validated || false,\n    linkedin_raw: person.linkedin || '',\n    priority: person.seniority === 'Strategic' ? 'High' : (person.seniority === 'Operational' ? 'Medium' : 'Low'),\n    priority_reason: person.why_relevant || '',\n    pitch_type: person.seniority === 'Strategic' ? 'Executive' : (person.seniority === 'Operational' ? 'Technical' : 'Business'),\n    department: person.department || '',\n    confidence_score: person.match_confidence || 0,\n    search_attempts: person.attempt_count || 0\n  };\n};\n\nconst allContacts = [\n  ...matched.map(p => formatContact(p, true)),\n  ...unmatched.map(p => formatContact(p, false))\n];\n\nconst stats = {\n  total_prospects: items.length,\n  linkedin_found: matched.length,\n  linkedin_not_found: unmatched.length,\n  success_rate: items.length > 0 ? Math.round((matched.length / items.length) * 100) : 0\n};\n\n// Build prospect data as JSON string (edge function expects string or object, but string is the standard pattern)\nconst prospectData = JSON.stringify({\n  status: 'completed',\n  company: webhook.company?.name || '',\n  contacts: allContacts,\n  serpapi_stats: stats,\n  linkedin_stats: {\n    total: allContacts.length,\n    validated: matched.length,\n    unvalidated: unmatched.length\n  }\n});\n\nreturn [{\n  json: {\n    user_id: webhook.user_id,\n    campaign_id: webhook.campaign_id,\n    company_research_id: webhook.company_research_id,\n    company_id: webhook.company_id,\n    company_domain: webhook.company_domain,\n    salesforce_account_id: webhook.salesforce_account_id,\n    salesforce_campaign_id: webhook.salesforce_campaign_id,\n    prospect: prospectData,\n    status: 'completed'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        400
+      ],
+      "id": "8f721b04-8a97-4ddf-bc9a-ba714376cbf0",
+      "name": "Code: Format Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2360,
+        400
+      ],
+      "id": "6dd0457f-79ca-4879-bb09-5c7074ec928f",
+      "name": "HTTP: Callback to Supabase"
+    }
+  ],
+  "connections": {
+    "Prospect Research Webhook": {
+      "main": [
+        [
+          {
+            "node": "GPT: Find People",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT: Find People": {
+      "main": [
+        [
+          {
+            "node": "Code: Split People",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Split People": {
+      "main": [
+        [
+          {
+            "node": "Code: Generate Search Patterns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Generate Search Patterns": {
+      "main": [
+        [
+          {
+            "node": "HTTP: SerpAPI Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: SerpAPI Search": {
+      "main": [
+        [
+          {
+            "node": "Code: Extract Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Extract Candidates": {
+      "main": [
+        [
+          {
+            "node": "GPT-4o-mini: Validate Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o-mini: Validate Match": {
+      "main": [
+        [
+          {
+            "node": "Code: Merge & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Merge & Validate": {
+      "main": [
+        [
+          {
+            "node": "IF: Valid Match?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Valid Match?": {
+      "main": [
+        [
+          {
+            "node": "Aggregate: All Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Retry Next Pattern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Retry Next Pattern": {
+      "main": [
+        [
+          {
+            "node": "IF: Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Retry?": {
+      "main": [
+        [
+          {
+            "node": "HTTP: SerpAPI Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aggregate: All Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate: All Prospects": {
+      "main": [
+        [
+          {
+            "node": "Code: Format Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Format Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Callback to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "timeSavedPerExecution": 10
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e9cede33a723de861755fc4c3b19745bba65cbc53a84a89eef946fc41c7f58e4"
+  },
+  "tags": []
+}
