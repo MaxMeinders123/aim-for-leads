@@ -297,6 +297,7 @@ export function buildProspectResearchPayload(
   return {
     user_id: userId,
     campaign_id: campaign?.id ?? null,
+    salesforce_campaign_id: company.salesforce_campaign_id ?? null,
     salesforce_account_id: company.salesforce_account_id ?? null,
     company_domain:
       company.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') ||
