@@ -1,0 +1,153 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [1920, 864],
+      "id": "4f7fdaa6-7f56-4d1d-9fdf-7823f696f918",
+      "name": "Prospect Research Webhook",
+      "webhookId": "845a71b9-f7fd-4466-9599-3cb79e34d3a4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  user_id: $('Prospect Research Webhook').item.json.body.user_id,\n  campaign_id: $('Prospect Research Webhook').item.json.body.campaign_id,\n  company_research_id: $('Prospect Research Webhook').item.json.body.company_research_id,\n  company_domain: $('Prospect Research Webhook').item.json.body.company_domain,\n  salesforce_account_id: $('Prospect Research Webhook').item.json.body.salesforce_account_id,\n  salesforce_campaign_id: $('Prospect Research Webhook').item.json.body.salesforce_campaign_id,\n  prospect: {\n    status: $json.status,\n    company: $json.company,\n    contacts: $json.contacts,\n    campaign_match_summary: $json.campaign_match_summary\n  }\n}\n}}",
+        "options": {}
+      },
+      "id": "8d243570-fb86-43a1-ac79-5c17e2d0c758",
+      "name": "HTTP: Callback to receive-prospect-results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [2800, 864],
+      "description": "POSTs result to Supabase edge function which saves to prospect_research table"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\n\n// Extract campaign data\nconst targetTitlesArray = body.campaign?.targetTitles || [];\nconst targetTitles = Array.isArray(targetTitlesArray) \n  ? targetTitlesArray.slice(0, 15).join('\\n- ')\n  : targetTitlesArray;\n\nconst painPointsArray = body.campaign?.painPoints || [];\nconst painPoints = Array.isArray(painPointsArray)\n  ? painPointsArray.filter(p => p.trim().length > 10).slice(0, 8).join('\\n- ')\n  : painPointsArray;\n\nconst personasArray = body.campaign?.targetPersonas || [];\nconst personas = Array.isArray(personasArray)\n  ? personasArray.slice(0, 5).join('\\n- ')\n  : personasArray;\n\n// Extract TOP 3 priority titles for focused search\nconst topTitles = Array.isArray(targetTitlesArray)\n  ? targetTitlesArray.slice(0, 3).join(', ')\n  : targetTitlesArray;\n\nreturn [{\n  json: {\n    ...body,\n    formatted_titles: targetTitles,\n    formatted_pain_points: painPoints,\n    formatted_personas: personas,\n    top_3_titles: topTitles\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2112, 864],
+      "id": "5a8038cc-967d-4b18-af67-8680829c5b93",
+      "name": "Prepare Campaign Data1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=⏱️ TIME LIMIT: 60 seconds - Work FAST\n\nFind 4-5 decision-makers at {{ $json.company.name }} ({{ $json.company.website }})\n\nCAMPAIGN:\n- Product: {{ $json.campaign.product }}\n- Region: {{ $json.campaign.targetRegion }}\n- Tech Focus: {{ $json.campaign.techFocus }}\n\nTOP 3 PRIORITY TITLES:\n{{ $json.top_3_titles }}\n\nALL TARGET TITLES:\n{{ $json.formatted_titles }}\n\nCOMPANY RESEARCH:\n{{ JSON.stringify($json.companyResearch) }}\n\nTASK: Find exactly 4-5 PERFECT matches - STOP at 5!\n\nSPEED STRATEGY:\n1. Do ONE web search: \"{{ $json.company.name }} leadership IT {{ $json.top_3_titles }}\"\n2. Extract 6-8 names from results\n3. For EACH person, call search_linkedin ONCE (format: FirstName|LastName|CompanyName)\n4. 🛑 STOP when you have 5 validated contacts\n\nPRIORITY:\n✅ 1-2 senior (C-level/VP/Director)\n✅ 3-4 operational (Managers/Leads/Architects)\n✅ Must match campaign titles OR equivalent roles\n✅ Must have LinkedIn URL (or mark needs_serpapi_fallback for C-level)\n\nEXCLUDE:\n❌ Board members, advisors, former employees\n❌ Roles outside IT/Cloud/Tech\n\nSTOP CONDITION:\n🛑 When you have 5 contacts with LinkedIn URLs → Output JSON IMMEDIATELY\n🛑 After 7 LinkedIn searches → Output what you have\n🛑 After 50 seconds → Output what you have",
+        "options": {
+          "systemMessage": "You are a FAST B2B prospect researcher. ⏱️ TIME LIMIT: 60 seconds total.\n\nSPEED REQUIREMENTS:\n✅ Target: 4-5 contacts (STOP at 5)\n✅ Max web searches: 2-3 total\n✅ Max LinkedIn searches: 7 total\n✅ Total execution time: <60 seconds\n\nFAST RESEARCH PROCESS:\n\n1. FOCUSED WEB SEARCH (2-3 searches max):\n   a) \"[CompanyName] leadership team [Top3Titles]\" → Gets 4-6 names\n   b) ONLY if <4 names: \"[CompanyName] IT department\"\n   c) STOP - no more web searches\n   \n   ❌ SKIP: News, press releases, deep research (wastes time)\n\n2. EXTRACT NAMES (Fast):\n   - Get 6-8 names max from web results\n   - Focus on titles matching campaign\n   - Verify they're CURRENT employees\n   - STOP extracting when you have 8 names\n\n3. LINKEDIN URL DISCOVERY (7 searches max):\n   For each person, call search_linkedin ONCE:\n   \n   Input: \"FirstName|LastName|CompanyName\"\n   Example: \"Sarah|Chen|Acme Corp\"\n   \n   IMPORTANT:\n   ✅ Simple format: FirstName|LastName|Company\n   ✅ Call tool, extract linkedin.com/in/ URL from results\n   ❌ NO retries (wastes time)\n   ❌ NO site: operators (Serper blocks these)\n   \n   If LinkedIn search fails:\n   - C-level: Include with needs_serpapi_fallback: true\n   - Others: Skip, move to next\n   \n   🛑 STOP when you have 5 valid contacts\n\n4. OUTPUT (JSON only):\n{\n  \"status\": \"completed\",\n  \"company\": \"Company Name\",\n  \"contacts\": [\n    {\n      \"first_name\": \"Sarah\",\n      \"last_name\": \"Chen\",\n      \"job_title\": \"Chief Technology Officer\",\n      \"linkedin\": \"https://linkedin.com/in/sarahchen\",\n      \"priority\": \"High\",\n      \"priority_reason\": \"CTO with budget authority\",\n      \"pitch_type\": \"Executive\",\n      \"needs_serpapi_fallback\": false\n    }\n  ]\n}\n\nQUALITY RULES:\n✅ Current employees, title matches campaign, LinkedIn found\n❌ Board members, former employees, wrong department\n✅ C-level without LinkedIn: Include with fallback flag\n❌ Manager without LinkedIn: Skip\n\nPRIORITY:\n- High: CTO, CIO, CISO, VP\n- Medium: Directors, Heads, Senior Managers\n- Low: Managers, Leads\n\nADAPT TO CAMPAIGN:\n- Security → CISOs, Security Directors\n- Cloud → Cloud Architects, DevOps\n- Managed Services → IT Directors",
+          "maxIterations": 20
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [2304, 864],
+      "id": "0f87fbab-30b4-4bcd-8f8e-04971436e198",
+      "name": "AI Agent: Find Prospects1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "low"
+          }
+        },
+        "options": {
+          "reasoningEffort": "low",
+          "timeout": 55000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [2304, 1088],
+      "id": "273b3721-40e3-4786-b901-ec16d7fd8a61",
+      "name": "OpenAI GPT-5.",
+      "credentials": {
+        "openAiApi": {
+          "id": "MvQi1874NPMQ2ug7",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = $input.item.json;\nconst webhookData = $items('Prepare Campaign Data1')[0].json;\n\n// Parse AI output\nlet parsed;\ntry {\n  let text = aiOutput.output || aiOutput.text || JSON.stringify(aiOutput);\n  text = text.trim().replace(/```json\\n?/g, '').replace(/```\\n?/g, '');\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);\n  if (!parsed.contacts) throw new Error('Missing contacts');\n} catch (e) {\n  console.error('Parse error:', e);\n  return [{\n    json: {\n      status: 'error',\n      company: webhookData.company?.name || 'Unknown',\n      contacts: []\n    }\n  }];\n}\n\n// Enhanced fuzzy matching for job titles\nconst matchesTargetTitles = (jobTitle, targetTitles) => {\n  if (!jobTitle || !targetTitles) return false;\n  \n  const normalizedTitle = jobTitle.toLowerCase();\n  const campaignTitles = Array.isArray(targetTitles) \n    ? targetTitles.map(t => t.toLowerCase())\n    : targetTitles.split('\\n').map(t => t.trim().replace(/^-\\s*/, '').toLowerCase()).filter(t => t);\n  \n  // Exact match\n  if (campaignTitles.some(t => normalizedTitle === t)) return true;\n  \n  // Fuzzy keyword match with 60% threshold\n  return campaignTitles.some(campaignTitle => {\n    const stopWords = ['the', 'and', 'for', 'of', 'with', 'at'];\n    const campaignKeywords = campaignTitle\n      .split(/[\\s,\\-\\/\\(\\)]+/)\n      .filter(k => k.length > 2 && !stopWords.includes(k));\n    \n    const titleKeywords = normalizedTitle\n      .split(/[\\s,\\-\\/\\(\\)]+/)\n      .filter(k => k.length > 2);\n    \n    const matchCount = campaignKeywords.filter(ck => \n      titleKeywords.some(tk => tk.includes(ck) || ck.includes(tk))\n    ).length;\n    \n    return matchCount >= Math.ceil(campaignKeywords.length * 0.6);\n  });\n};\n\n// Enhanced priority calculation\nconst calculatePriority = (contact, campaign) => {\n  const title = (contact.job_title || '').toLowerCase();\n  const techFocus = (campaign?.techFocus || '').toLowerCase();\n  const product = (campaign?.product || '').toLowerCase();\n  \n  if (/\\b(cto|cio|ciso|chief|vp|vice president)\\b/.test(title)) {\n    return {\n      priority: 'High',\n      reason: `${contact.job_title} - Executive decision-maker with budget authority for ${product || techFocus} initiatives`,\n      pitch_type: 'Executive'\n    };\n  }\n  \n  if (/\\b(director|head of|head\\s)\\b/.test(title)) {\n    return {\n      priority: 'Medium',\n      reason: `${contact.job_title} - Strategic influencer for ${techFocus || 'cloud modernization'} decisions`,\n      pitch_type: 'Executive'\n    };\n  }\n  \n  if (/\\b(manager|lead|architect|specialist|principal)\\b/.test(title)) {\n    return {\n      priority: 'Medium',\n      reason: `${contact.job_title} - Operational owner who implements ${techFocus || product} solutions`,\n      pitch_type: 'Technical'\n    };\n  }\n  \n  return {\n    priority: contact.priority || 'Low',\n    reason: contact.priority_reason || `${contact.job_title} - Relevant technical role`,\n    pitch_type: contact.pitch_type || 'Technical'\n  };\n};\n\n// Validate LinkedIn URL\nconst validateLinkedInUrl = (url) => {\n  if (!url || typeof url !== 'string') return null;\n  \n  let cleaned = url.trim();\n  if (!cleaned) return null;\n  \n  if (cleaned.startsWith('linkedin.com') || cleaned.startsWith('www.linkedin.com')) {\n    cleaned = 'https://' + cleaned;\n  }\n  \n  if (!cleaned.includes('linkedin.com/in/')) return null;\n  \n  cleaned = cleaned.split('?')[0].replace(/\\/$/, '');\n  \n  return cleaned;\n};\n\n// Process contacts\nconst processedContacts = parsed.contacts\n  .map(c => {\n    const priorityData = calculatePriority(c, webhookData.campaign);\n    const linkedinUrl = validateLinkedInUrl(c.linkedin);\n    const needsFallback = !linkedinUrl || c.needs_serpapi_fallback === true;\n    \n    if (!linkedinUrl && priorityData.priority !== 'High') {\n      console.log(`Filtered: ${c.first_name} ${c.last_name} - no LinkedIn URL (priority: ${priorityData.priority})`);\n      return null;\n    }\n    \n    const matchesCampaign = matchesTargetTitles(c.job_title, webhookData.campaign?.targetTitles);\n    if (!matchesCampaign) {\n      console.log(`Filtered: ${c.first_name} ${c.last_name} (${c.job_title}) - doesn't match campaign titles`);\n      return null;\n    }\n    \n    return {\n      first_name: c.first_name,\n      last_name: c.last_name,\n      job_title: c.job_title,\n      linkedin: linkedinUrl || null,\n      priority: priorityData.priority,\n      priority_reason: priorityData.reason,\n      pitch_type: priorityData.pitch_type,\n      linkedin_source: c.linkedin_source || 'serper_ai_agent',\n      needs_serpapi_fallback: needsFallback\n    };\n  })\n  .filter(c => c !== null)\n  .sort((a, b) => {\n    const priorityOrder = { 'High': 3, 'Medium': 2, 'Low': 1 };\n    return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);\n  });\n\nconst validContacts = processedContacts.slice(0, 7);\n\nconsole.log(`Campaign: ${webhookData.campaign?.campaignName || 'Unknown'}`);\nconsole.log(`Company: ${webhookData.company?.name}`);\nconsole.log(`Valid contacts: ${validContacts.length}/${parsed.contacts.length}`);\nconsole.log(`High priority: ${validContacts.filter(c => c.priority === 'High').length}`);\nconsole.log(`Needs LinkedIn fallback: ${validContacts.filter(c => c.needs_serpapi_fallback).length}`);\n\nreturn [{\n  json: {\n    status: validContacts.length > 0 ? 'completed' : 'no_matches',\n    company: parsed.company || webhookData.company?.name,\n    contacts: validContacts,\n    campaign_match_summary: {\n      total_found: parsed.contacts.length,\n      campaign_matched: validContacts.length,\n      high_priority: validContacts.filter(c => c.priority === 'High').length,\n      medium_priority: validContacts.filter(c => c.priority === 'Medium').length,\n      needs_linkedin_fallback: validContacts.filter(c => c.needs_serpapi_fallback).length\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2576, 864],
+      "id": "f05fb67c-66c2-42b8-8e4d-a88a18274caa",
+      "name": "Validate & Format Output1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "331d5fd92fb20aa9b798c1d46d8777ae23f92119"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ \n  const input = $fromAI('text', 'Provide: FirstName|LastName|CompanyName (pipe-separated)', 'text');\n  const parts = input.split('|').map(s => s.trim());\n  const firstName = parts[0] || '';\n  const lastName = parts[1] || '';\n  const company = parts[2] || '';\n  \n  const query = `\"${firstName} ${lastName}\" \"${company}\" linkedin profile`;\n  \n  return JSON.stringify({\n    q: query,\n    num: 5\n  });\n}}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [2496, 1104],
+      "id": "cc307a1c-ccba-4aa9-b975-015853482e61",
+      "name": "search_linkedin1",
+      "rewireOutputLogTo": "ai_tool"
+    }
+  ],
+  "connections": {
+    "Prospect Research Webhook": {
+      "main": [[{"node": "Prepare Campaign Data1", "type": "main", "index": 0}]]
+    },
+    "Prepare Campaign Data1": {
+      "main": [[{"node": "AI Agent: Find Prospects1", "type": "main", "index": 0}]]
+    },
+    "AI Agent: Find Prospects1": {
+      "main": [[{"node": "Validate & Format Output1", "type": "main", "index": 0}]]
+    },
+    "OpenAI GPT-5.": {
+      "ai_languageModel": [[{"node": "AI Agent: Find Prospects1", "type": "ai_languageModel", "index": 0}]]
+    },
+    "Validate & Format Output1": {
+      "main": [[{"node": "HTTP: Callback to receive-prospect-results", "type": "main", "index": 0}]]
+    },
+    "search_linkedin1": {
+      "ai_tool": [[{"node": "AI Agent: Find Prospects1", "type": "ai_tool", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "e9cede33a723de861755fc4c3b19745bba65cbc53a84a89eef946fc41c7f58e4"
+  }
+}
