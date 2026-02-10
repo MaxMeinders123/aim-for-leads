@@ -1,0 +1,373 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        1936,
+        832
+      ],
+      "id": "4f7fdaa6-7f56-4d1d-9fdf-7823f696f918",
+      "name": "Prospect Research Webhook",
+      "webhookId": "845a71b9-f7fd-4466-9599-3cb79e34d3a4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\n\n// Extract and format all campaign data\nconst companyName = body.company?.name || '';\nconst companyWebsite = body.company?.website || '';\nconst campaignName = body.campaign?.campaignName || '';\nconst product = body.campaign?.product || '';\nconst targetRegion = body.campaign?.targetRegion || '';\nconst techFocus = body.campaign?.techFocus || '';\nconst primaryAngle = body.campaign?.primaryAngle || '';\n\n// Target titles - critical for filtering\nconst targetTitlesArray = body.campaign?.targetTitles || [];\nconst targetTitles = Array.isArray(targetTitlesArray) \n  ? targetTitlesArray.join(', ')\n  : targetTitlesArray.split('\\n').map(t => t.trim()).filter(t => t.length > 0).join(', ');\n\n// Target personas\nconst targetPersonasArray = body.campaign?.targetPersonas || [];\nconst targetPersonas = Array.isArray(targetPersonasArray)\n  ? targetPersonasArray.join('\\n')\n  : targetPersonasArray;\n\n// Pain points\nconst painPointsArray = body.campaign?.painPoints || [];\nconst painPoints = Array.isArray(painPointsArray)\n  ? painPointsArray.join('\\n')\n  : painPointsArray;\n\n// Company research summary\nconst companyResearch = body.companyResearch || {};\nconst companySummary = companyResearch.summary || '';\nconst cloudProvider = companyResearch.cloud_preference?.provider || 'Unknown';\nconst cloudConfidence = companyResearch.cloud_preference?.confidence || 0;\n\nconst chatInput = `Find 8-10 IT/Cloud decision-makers at ${companyName}\n\n📋 COMPANY INFO:\n- Name: ${companyName}\n- Website: ${companyWebsite}\n- Domain: ${companyDomain}\n- Region: ${targetRegion}\n- Industry: ${companySummary}\n- Detected Cloud: ${cloudProvider} (${cloudConfidence}% confidence)\n\n💼 CAMPAIGN CONTEXT:\n- Campaign: ${campaignName}\n- Product: ${product}\n- Value Prop: ${primaryAngle}\n- Tech Focus: ${techFocus}\n\n🎯 TARGET TITLES (match these OR RELATED titles):\n${targetTitles}\n\n👥 TARGET PERSONAS:\n${targetPersonas}\n\n🔥 PAIN POINTS WE SOLVE:\n${painPoints}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔍 YOUR MISSION:\n\n**PHASE 1: Find 8-10 IT/Cloud people using DIVERSE WEB SOURCES**\n\n🌐 **PRIMARY SOURCES** (LinkedIn profiles may be blocked - use these first):\n\n1. **Company website**:\n   - site:${companyDomain} \"team\" OR \"leadership\" OR \"about\" OR \"management\"\n   - site:${companyDomain} \"IT\" OR \"technology\" OR \"infrastructure\"\n   - Look for IT/Tech leadership bios, team pages, org charts\n\n2. **Job postings** (reveal IT leaders):\n   - \"${companyName}\" \"we are hiring\" IT OR technology OR cloud\n   - \"${companyName}\" \"reports to\" (Director OR Manager OR Head)\n   - Look for who's hiring/managing teams\n\n3. **Press releases & news**:\n   - \"${companyName}\" \"appoints\" OR \"promotes\" (CTO OR \"IT Director\" OR technology)\n   - \"${companyName}\" \"interview\" (technology OR IT OR cloud)\n   - Look for IT leader announcements, interviews\n\n4. **Company blog & tech content**:\n   - \"${companyName}\" blog (cloud OR infrastructure OR DevOps)\n   - Look for author bylines with IT roles\n\n5. **LinkedIn** (if accessible):\n   - \"${companyName}\" site:linkedin.com/company employees\n   - \"${companyName}\" \"CTO\" OR \"IT Director\" OR \"Head of IT\" site:linkedin.com\n   - \"${companyName}\" \"Cloud\" OR \"DevOps\" OR \"Infrastructure\" site:linkedin.com\n\n6. **Industry sources**:\n   - Crunchbase, company databases, conference speakers\n\n**Get FULL NAMES, JOB TITLES, and verify they CURRENTLY work there**\n\n**PHASE 2: Get LinkedIn URLs using search_linkedin tool**\n- For each person from Phase 1, call search_linkedin tool\n- Query format: \"FirstName LastName\" \"${companyName}\" site:linkedin.com/in/\n- If no URL found after 2 tries, leave empty and explain in evidence\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🎯 FLEXIBLE TITLE MATCHING:\n\n**Accept titles that MATCH or are RELATED TO target titles:**\n\nExamples of acceptable related titles:\n- \"IT Director\" = \"Director of IT\" = \"Director IT\"\n- \"Cloud Engineer\" or \"Senior Cloud Engineer\" = related to \"Cloud Architect\"\n- \"Infrastructure Engineer\" or \"Senior Infrastructure Engineer\" = related to \"Infrastructure Manager\"\n- \"IT Manager\" = related to \"Director of IT\" (for smaller companies)\n- \"Platform Engineer\" = related to \"Cloud Platform Lead\"\n- \"Informatisering & Automatisering (I&A)\" = Dutch IT department\n\n**DO NOT return**: HR, Sales, Marketing, Operations, Finance (unless cloud-focused), Board members, Former employees\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🚨 CRITICAL RULES:\n\n1. **Accept RELATED titles**, not just exact matches (see examples above)\n2. **Use DIVERSE sources** (company site, job posts, news, blogs) - don't rely only on LinkedIn\n3. **Verify current employment** (check multiple sources, look for 2024-2025 mentions)\n4. **Target 8-10 contacts** with seniority mix:\n   - 2-3 strategic (C-level, VP, Director, Head of...)\n   - 4-6 operational (Manager, Lead, Architect, Senior Engineer)\n   - 1-2 financial/security (FinOps, CISO, IT Finance)\n5. **Evidence-based**: Note WHERE you found each person (company site, job post, news article, etc.)\n6. **Cloud alignment**: Look for ${techFocus} signals if possible\n7. **LinkedIn URLs**: Use search_linkedin tool in Phase 2, leave empty if not found\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n💡 IMPORTANT:\n- If you find \"IT Manager\" at a mid-size company, that's acceptable (related to \"Director of IT\")\n- If you find \"Senior Cloud Engineer\", that's acceptable (related to \"Cloud Architect\")\n- If you find \"Informatiemanagement\" (Dutch), that's acceptable (IT management)\n- Quality over quantity: 6-8 verified contacts is better than 10 unverified ones\n\nReturn JSON with your findings.`;\n\nreturn [{\n  json: {\n    chatInput: chatInput,\n    webhookData: body\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2128,
+        832
+      ],
+      "id": "prepare-input-node",
+      "name": "Prepare Input"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a B2B prospect research expert specializing in IT and Cloud decision-makers.\n\n🎯 YOUR GOAL: Find 8-10 IT/Cloud decision-makers for a cloud modernization sales campaign.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔍 TWO-PHASE RESEARCH PROCESS:\n\n**PHASE 1: PEOPLE DISCOVERY (Use built-in web search extensively)**\n\n🌐 **SEARCH STRATEGY** (LinkedIn profiles may be blocked, so use diverse sources):\n\n1. **Company website** (primary source):\n   - site:[company-domain] \"team\" OR \"leadership\" OR \"about\" OR \"management\"\n   - site:[company-domain] \"IT\" OR \"technology\" OR \"infrastructure\" OR \"digital\"\n   - Look for IT/Technology leadership bios, team pages, org charts\n\n2. **Job postings** (reveal who's hiring/managing):\n   - \"[Company]\" \"we are hiring\" OR \"join our team\" IT OR technology OR cloud\n   - \"[Company]\" \"reports to\" (Director OR Manager OR Head)\n   - Look for job ads mentioning IT leadership names or reporting structure\n\n3. **Press releases & news articles**:\n   - \"[Company]\" \"appoints\" OR \"announces\" OR \"promotes\" (CTO OR \"IT Director\" OR \"technology leader\")\n   - \"[Company]\" \"Q&A\" OR \"interview\" (technology OR IT OR cloud)\n   - Look for executive announcements, interviews with IT leaders\n\n4. **Company blog & tech content**:\n   - \"[Company]\" blog (cloud OR infrastructure OR DevOps OR technology)\n   - Look for author bylines, contributor bios (often include IT roles)\n\n5. **LinkedIn company page** (if accessible):\n   - \"[Company]\" site:linkedin.com/company employees\n   - Look for employee counts in Technology, Engineering, IT departments\n\n6. **LinkedIn people search** (if accessible):\n   - \"[Company]\" \"CTO\" OR \"Chief Technology Officer\" site:linkedin.com\n   - \"[Company]\" \"IT Director\" OR \"Director of IT\" OR \"Director IT\" site:linkedin.com\n   - \"[Company]\" \"Head of IT\" OR \"Head IT\" OR \"Head of Technology\" site:linkedin.com\n   - \"[Company]\" \"Cloud Architect\" OR \"Cloud Engineer\" OR \"Cloud Lead\" site:linkedin.com\n   - \"[Company]\" \"DevOps\" OR \"SRE\" OR \"Platform Engineer\" site:linkedin.com\n   - \"[Company]\" \"CISO\" OR \"Head of Security\" OR \"Security Director\" site:linkedin.com\n\n7. **Industry databases & directories**:\n   - Search Crunchbase, company databases, industry publications\n   - Conference speaker lists, webinar hosts\n\n8. **Verify current employment**:\n   - Cross-reference multiple sources (company site + news + job postings)\n   - Look for recent mentions (2024-2025)\n   - DISCARD anyone who left or never worked there\n\n**PHASE 2: LINKEDIN URL DISCOVERY (Use search_linkedin tool)**\n\nFor each person found in Phase 1:\n1. Call search_linkedin tool with query: \"FirstName LastName\" \"Company\" site:linkedin.com/in/\n2. Extract the LinkedIn /in/ URL from search results\n3. Validate:\n   - URL starts with https://linkedin.com/in/ or https://[country].linkedin.com/in/\n   - Name matches\n   - Company matches\n4. If no valid URL after 2 tries, leave linkedin field empty and note in evidence\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🎯 FLEXIBLE TITLE MATCHING:\n\n**Accept titles that MATCH or are RELATED TO target titles:**\n\n**Strategic Leadership (accept these + related):**\n- CTO, Chief Technology Officer, Chief Information Officer (CIO)\n- VP Engineering, VP Technology, VP IT, VP Infrastructure\n- Director of IT, IT Director, Director IT, Director of Technology, Technology Director\n- Head of IT, Head IT, Head of Technology, Head of Infrastructure, Head of Cloud\n- Head of Engineering, Engineering Director\n\n**Operational Leadership (accept these + related):**\n- Cloud Platform Lead, Cloud Lead, Platform Lead, Cloud Team Lead\n- IT Operations Director, Director of IT Operations, IT Ops Director\n- Infrastructure Manager, Infrastructure Lead, Infrastructure Team Lead, Senior Infrastructure Engineer\n- Network Operations Manager, Network Manager, Network Lead\n- SRE Manager, SRE Lead, Site Reliability Lead, Senior SRE\n- DevOps Manager, DevOps Lead, DevOps Team Lead, Senior DevOps Engineer\n- Cloud Architect, Senior Cloud Architect, Lead Cloud Architect, Cloud Solutions Architect\n- Enterprise Architect, Solutions Architect, Technical Architect\n- Platform Engineer, Senior Platform Engineer, Principal Engineer (if cloud-focused)\n\n**Financial & Security (accept these + related):**\n- FinOps Lead, FinOps Manager, Cloud Financial Manager\n- Cloud Cost Manager, Cloud Optimization Manager\n- IT Finance Manager, Technology Finance Manager\n- CISO, Chief Information Security Officer, Chief Security Officer (CSO)\n- Head of Information Security, Head of Security, Security Director\n- Cloud Security Architect, Security Architect, Senior Security Engineer\n\n**RELATED TITLES TO ACCEPT:**\n- \"IT Manager\" (related to \"Director of IT\" for smaller companies)\n- \"Technology Manager\" (related to \"Director of Technology\")\n- \"Cloud Engineer\" or \"Senior Cloud Engineer\" (related to \"Cloud Architect\")\n- \"Infrastructure Engineer\" or \"Senior Infrastructure Engineer\" (related to \"Infrastructure Manager\")\n- \"Platform Engineer\" or \"Principal Engineer\" (if cloud/infrastructure-focused)\n- \"Informatisering & Automatisering (I&A)\" or \"Informatiemanagement\" (Dutch IT departments)\n- \"Applicatiebeheerder\" (Application Manager - if cloud/infrastructure apps)\n\n**DO NOT RETURN:**\n- HR, Sales, Marketing, Operations, General Finance (unless cloud-focused)\n- CEO, CFO, Managing Director (unless tiny company <50 employees with no IT staff)\n- Board members, advisors, consultants, former employees\n- Servicedesk, helpdesk, support roles (unless \"IT Support Manager\" or higher)\n\n**SENIORITY MIX (8-10 total):**\n- 2-3 strategic (C-level, VP, Director, Head of...)\n- 4-6 operational (Manager, Lead, Architect, Senior Engineer)\n- 1-2 financial/security influencers (FinOps, CISO, IT Finance)\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📤 OUTPUT JSON:\n\n{\n  \"status\": \"completed\",\n  \"company\": \"CompanyName\",\n  \"contacts\": [\n    {\n      \"first_name\": \"John\",\n      \"last_name\": \"Smith\",\n      \"job_title\": \"CTO\",\n      \"linkedin\": \"https://linkedin.com/in/johnsmith\",\n      \"priority\": \"High\",\n      \"priority_reason\": \"CTO with direct authority over cloud infrastructure and budget decisions. LinkedIn shows AWS certifications and recent post about cloud cost optimization.\",\n      \"pitch_type\": \"Technical Executive\",\n      \"confidence_score\": 95,\n      \"cloud_alignment\": \"AWS\",\n      \"evidence\": \"LinkedIn profile shows AWS Solutions Architect certification. Company blog post from Jan 2025 mentions he's leading cloud migration initiative.\"\n    }\n  ]\n}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📊 FIELD DEFINITIONS:\n\n**priority**: \n- High: C-level, VP, Head, Director with budget authority\n- Medium: Manager, Lead, Architect with operational responsibility\n- Low: Engineer, Specialist with technical influence\n\n**pitch_type**:\n- Technical Executive: C-level/VP/Head with technical background + budget authority\n- Technical Leader: Manager/Lead/Architect with hands-on technical work\n- Business Executive: CEO/CFO (only if small company with no IT staff)\n- FinOps: Cloud Cost Manager, IT Finance Manager (cost focus)\n- Security: CISO, Cloud Security Architect (security focus)\n\n**confidence_score** (0-100):\n- 90-100: Strong evidence (LinkedIn profile found, recent activity, multiple sources)\n- 70-89: Good evidence (LinkedIn profile, job title verified)\n- 50-69: Moderate evidence (mentioned on company site, less verification)\n- Below 50: Weak evidence (avoid including unless no better options)\n\n**cloud_alignment**:\n- AWS/Azure/GCP: If campaign tech focus matches and evidence found\n- None: No cloud evidence found\n- Unknown: Unclear from research\n\n**evidence**: Brief note explaining:\n- How you verified this person (LinkedIn, company site, blog, news)\n- What makes them relevant (certifications, cloud project mentions, responsibilities)\n- Why they match the campaign (tech focus, pain points addressed)\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔧 TOOL USAGE:\n\n- **web search (built-in)**: UNLIMITED - use extensively in Phase 1 for discovery\n- **search_linkedin**: 15 calls max - use ONLY in Phase 2 for LinkedIn URLs\n- **Max iterations**: 30\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n💡 IMPORTANT:\n\n- Quality over quantity: 6-8 high-quality contacts is better than 10 weak ones\n- Never fabricate contacts or LinkedIn URLs\n- If you can't find enough qualified IT people, explain why in evidence\n- Target 8-10 but it's okay to return fewer if you can't verify more\n- Every contact must have strong relevance to campaign pain points and tech focus\n\nNow execute BOTH phases step-by-step.",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        2320,
+        832
+      ],
+      "id": "ai-agent-prospect",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "high"
+          }
+        },
+        "options": {
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "high"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2320,
+        1024
+      ],
+      "id": "openai-model-gpt5",
+      "name": "OpenAI Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "MvQi1874NPMQ2ug7",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "331d5fd92fb20aa9b798c1d46d8777ae23f92119"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('JSON', `LinkedIn profile URL search query - must include: person's full name, company name, and site:linkedin.com/in/`, 'json') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        2512,
+        1024
+      ],
+      "id": "serper-linkedin-tool",
+      "name": "search_linkedin"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI Agent output\nconst aiOutput = $input.item.json;\nconst webhookData = $items('Prepare Input')[0].json.webhookData;\n\nlet parsed;\ntry {\n  let text = aiOutput.output || aiOutput.text || JSON.stringify(aiOutput);\n  \n  // Remove markdown code blocks\n  text = text.trim().replace(/```json\\n?/g, '').replace(/```\\n?/g, '');\n  \n  // Extract JSON object\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  if (!jsonMatch) {\n    throw new Error('No JSON found in output');\n  }\n  \n  parsed = JSON.parse(jsonMatch[0]);\n  \n  if (!parsed.contacts || !Array.isArray(parsed.contacts)) {\n    throw new Error('Missing contacts array');\n  }\n} catch (e) {\n  console.error('Parse error:', e.message);\n  return [{\n    json: {\n      user_id: webhookData.user_id,\n      campaign_id: webhookData.campaign_id,\n      company_research_id: webhookData.company_research_id,\n      company_domain: webhookData.company_domain,\n      salesforce_account_id: webhookData.salesforce_account_id,\n      prospect: {\n        status: 'error',\n        company: webhookData.company.name,\n        contacts: []\n      }\n    }\n  }];\n}\n\n// Validate and clean contacts\nconst validContacts = parsed.contacts.filter(c => {\n  // Must have required fields\n  if (!c.first_name || !c.last_name || !c.job_title) {\n    return false;\n  }\n  \n  // LinkedIn URL validation (can be empty, but if present must be valid)\n  if (c.linkedin && c.linkedin.length > 0) {\n    if (!c.linkedin.startsWith('http')) {\n      return false;\n    }\n    if (!c.linkedin.includes('/in/')) {\n      return false;\n    }\n  }\n  \n  return true;\n}).map(c => {\n  // Ensure all fields are present\n  return {\n    first_name: c.first_name,\n    last_name: c.last_name,\n    job_title: c.job_title,\n    linkedin: c.linkedin || '',\n    priority: c.priority || 'Medium',\n    priority_reason: c.priority_reason || '',\n    pitch_type: c.pitch_type || 'Technical Leader',\n    confidence_score: c.confidence_score || 50,\n    cloud_alignment: c.cloud_alignment || 'Unknown',\n    evidence: c.evidence || 'No evidence provided'\n  };\n});\n\nreturn [{\n  json: {\n    user_id: webhookData.user_id,\n    campaign_id: webhookData.campaign_id,\n    company_research_id: webhookData.company_research_id,\n    company_domain: webhookData.company_domain,\n    salesforce_account_id: webhookData.salesforce_account_id,\n    prospect: {\n      status: parsed.status || 'completed',\n      company: parsed.company || webhookData.company.name,\n      contacts: validContacts\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2512,
+        832
+      ],
+      "id": "format-output-node",
+      "name": "Format Output"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2704,
+        832
+      ],
+      "id": "callback-http-node",
+      "name": "Callback"
+    }
+  ],
+  "connections": {
+    "Prospect Research Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_linkedin": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Output": {
+      "main": [
+        [
+          {
+            "node": "Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Prospect Research Webhook": [
+      {
+        "headers": {
+          "host": "engagetech12.app.n8n.cloud",
+          "user-agent": "Deno/2.1.4 (variant; SupabaseEdgeRuntime/1.70.1)",
+          "content-length": "3857",
+          "accept": "*/*",
+          "accept-encoding": "gzip, br",
+          "accept-language": "*",
+          "cdn-loop": "cloudflare; loops=1; subreqs=1",
+          "cf-connecting-ip": "2a05:d014:61b:2709:9645:fa07:b91f:4f52",
+          "cf-ew-via": "15",
+          "cf-ipcountry": "DE",
+          "cf-ray": "9c9a9286e10fd355-FRA",
+          "cf-visitor": "{\"scheme\":\"https\"}",
+          "cf-worker": "n8n.cloud",
+          "content-type": "application/json",
+          "x-forwarded-for": "2a05:d014:61b:2709:9645:fa07:b91f:4f52, 172.71.172.130",
+          "x-forwarded-host": "engagetech12.app.n8n.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "traefik-prod-users-gwc-33-6b64989c5-7d7xg",
+          "x-is-trusted": "yes",
+          "x-real-ip": "2a05:d014:61b:2709:9645:fa07:b91f:4f52"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "user_id": "389efdac-258e-4a05-82ed-c74365b57405",
+          "campaign_id": "147f58de-2045-4687-ab0a-2920081355b7",
+          "salesforce_account_id": null,
+          "company_domain": "www.adelante-zorggroep.nl",
+          "company_research_id": "db0f852f-e17b-426e-a0a8-16c34bd91399",
+          "campaign": {
+            "campaignName": "Noventiq",
+            "product": "Cloud Modernization & Managed Cloud Services",
+            "productCategory": "Cloud Services",
+            "primaryAngle": "Reduce Cloud Spend & Increase Cost Predictability (FinOps-led)",
+            "secondaryAngle": "Cloud Governance, Security & Operational Control",
+            "targetRegion": "Benelux",
+            "painPoints": [
+              "Unpredictable monthly cloud bills and cost spikes",
+              "Lack of cost ownership across teams and accounts",
+              "Low or inconsistent tagging preventing cost allocation",
+              "No chargeback/showback model for business units",
+              "Savings Plans and Reserved Instances underutilised or misaligned",
+              "Engineering optimises for speed",
+              "finance optimises for cost → friction",
+              "Too many cloud accounts/subscriptions without clear governance",
+              "Cloud environment not aligned to security or compliance standards",
+              "Manual security controls and audit evidence collection",
+              "IAM sprawl and unclear access ownership",
+              "Landing zone and guardrails inconsistently implemented",
+              "Tool sprawl across cost",
+              "security",
+              "and monitoring platforms",
+              "High operational load on CloudOps / SRE teams",
+              "Reactive firefighting instead of proactive optimisation",
+              "Limited visibility into future cloud spend and forecasting",
+              "Cloud partner adds cost but not strategic guidance",
+              "Internal team lacks time or expertise to mature the cloud operating model"
+            ],
+            "targetPersonas": [
+              "Primary Persona — Strategic Decision Maker (Cost + Risk Owner)",
+              "Owns cloud strategy",
+              "budget accountability",
+              "and vendor decisions",
+              "Pressured by rising cloud costs",
+              "unclear ROI",
+              "and finance scrutiny",
+              "Cares about predictability",
+              "governance",
+              "security posture",
+              "and board reporting",
+              "Typical roles: CTO",
+              "Director of IT",
+              "Head of Cloud",
+              "VP Engineering",
+              "Secondary Persona — Operational Owner (Feels the Pain Daily)",
+              "Runs day-to-day cloud/platform/infrastructure operations",
+              "Struggles with complexity",
+              "firefighting",
+              "tool sprawl",
+              "and manual processes",
+              "Key source of truth on what's actually broken",
+              "Typical roles: Cloud Platform Lead",
+              "SRE Manager",
+              "DevOps Manager",
+              "Infrastructure Manager",
+              "Tertiary Persona — Financial / Governance Influencer",
+              "Focused on cost allocation",
+              "forecasting",
+              "chargeback/showback",
+              "Often frustrated by lack of tagging",
+              "ownership",
+              "and engineering alignment",
+              "Influences partner decisions but rarely owns delivery",
+              "Typical roles: FinOps Lead",
+              "Cloud Cost Manager",
+              "IT Finance"
+            ],
+            "targetTitles": [
+              "CTO",
+              "VP Engineering",
+              "Director of IT",
+              "Head of IT",
+              "Head of Infrastructure",
+              "Head of Cloud",
+              "Cloud Platform Lead",
+              "Director of Technology",
+              "IT Operations Director",
+              "Infrastructure Manager",
+              "Network Operations Manager",
+              "SRE Manager",
+              "DevOps Manager",
+              "Cloud Architect",
+              "Lead Cloud Architect",
+              "Enterprise Architect",
+              "FinOps Lead",
+              "Cloud Cost Manager",
+              "IT Finance Manager",
+              "CISO",
+              "Head of Information Security",
+              "Cloud Security Architect"
+            ],
+            "targetVerticals": [],
+            "techFocus": "AWS"
+          },
+          "company": {
+            "name": "Adelante IKZ",
+            "website": "www.adelante-zorggroep.nl",
+            "linkedin": ""
+          },
+          "companyResearch": {
+            "summary": "Adelante (Adelante Zorggroep / Adelante Groep) is a Dutch non-profit healthcare provider in Limburg focused on rehabilitation care (adults and children) plus audiology/communication and related services. Their end-user collaboration stack includes Microsoft Teams and they run the HiX EPD (ChipSoft) with a patient portal (\"Mijn Adelante\"), which makes a Microsoft/Azure-leaning cloud posture more likely than AWS for modernization and managed cloud opportunities.",
+            "acquiredBy": null,
+            "effectiveDate": null,
+            "company_status": "Operating",
+            "cloud_preference": {
+              "provider": "Azure",
+              "confidence": 70
+            },
+            "stillOperatesIndependently": true
+          },
+          "qualify": true
+        },
+        "webhookUrl": "https://engagetech12.app.n8n.cloud/webhook/845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e9cede33a723de861755fc4c3b19745bba65cbc53a84a89eef946fc41c7f58e4"
+  }
+}
