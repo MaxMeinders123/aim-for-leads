@@ -118,9 +118,9 @@ export default function ContactsView() {
         const existingGroup = groupsByDomain.get(normalizedDomain);
 
         const normalizedProspects = companyProspects.map((p) => ({
-            ...p,
-            company_name: cr.company_name || cr.company_domain,
-          }));
+          ...p,
+          company_name: cr.company_name || cr.company_domain,
+        }));
 
         if (!existingGroup) {
           groupsByDomain.set(normalizedDomain, {
@@ -154,7 +154,7 @@ export default function ContactsView() {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, campaignId]);
+  }, [user?.id, campaignId, expandedCompanies.size]);
 
   useEffect(() => {
     loadData();
