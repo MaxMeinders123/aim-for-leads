@@ -15,6 +15,25 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+const normalizeCompanyDomain = (website?: string, fallbackName?: string) => {
+  if (website) {
+    const trimmed = website.trim();
+
+    try {
+      const normalizedUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : `https://${trimmed}`;
+      return new URL(normalizedUrl).hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+      return trimmed
+        .replace(/^https?:\/\//, '')
+        .replace(/^www\./, '')
+        .split('/')[0]
+        .toLowerCase();
+    }
+  }
+
+  return fallbackName?.toLowerCase().replace(/\s+/g, '') || '';
+};
+
 export default function Research() {
   const navigate = useNavigate();
   const { campaignId } = useParams<{ campaignId: string }>();
@@ -229,7 +248,7 @@ export default function Research() {
 
     setResearchProgress({ isRunning: false });
     isProcessingRef.current = false;
-  }, [isRunning, companies, selectedCampaign, user, setResearchProgress, updateCompanyProgress, userWebhooks]);
+  }, [isRunning, companiesProgress, companies, selectedCampaign, user, setResearchProgress, updateCompanyProgress, userWebhooks]);
 
   useEffect(() => {
     if (isRunning && !isProcessingRef.current) processCompanies();
@@ -253,8 +272,8 @@ export default function Research() {
         async (payload) => {
           const rec = payload.new as { id: string; company_domain: string; raw_data: unknown; status: string; company_status: string | null };
           const match = companies.find((c) => {
-            const domain = c.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase() || c.name.toLowerCase().replace(/\s+/g, '');
-            return domain === rec.company_domain;
+            const domain = normalizeCompanyDomain(c.website, c.name);
+            return domain === rec.company_domain.toLowerCase();
           });
           if (match && rec.status === 'completed') {
             const companyData = rec.raw_data as CompanyResearchResult | null;
@@ -286,8 +305,8 @@ export default function Research() {
           if (!cr) return;
 
           const match = companies.find((c) => {
-            const domain = c.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase() || c.name.toLowerCase().replace(/\s+/g, '');
-            return domain === cr.company_domain;
+            const domain = normalizeCompanyDomain(c.website, c.name);
+            return domain === cr.company_domain.toLowerCase();
           });
           if (!match) return;
 
