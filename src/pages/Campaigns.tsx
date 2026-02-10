@@ -202,6 +202,40 @@ export default function Campaigns() {
 
   const stepLabels = ['Basics', 'Identity', 'Audience', 'Strategy'];
 
+  const campaignsWithContacts = campaigns.filter((c) => (c.contacts_count || 0) > 0);
+  const campaignsWithoutContacts = campaigns.filter((c) => (c.contacts_count || 0) === 0);
+
+  const renderCampaignMenu = (campaign: (typeof campaigns)[0]) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute top-3 right-3 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={(e) => openEdit(campaign, e)}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            setCampaignToDelete(campaign.id);
+          }}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <AppLayout>
       <div className="flex flex-col h-full">
@@ -253,48 +287,21 @@ export default function Campaigns() {
           {!isLoading && campaigns.length > 0 && (
             <div className="space-y-8">
               {/* Campaigns with contacts */}
-              {campaigns.filter(c => (c.contacts_count || 0) > 0).length > 0 && (
+              {campaignsWithContacts.length > 0 && (
                 <div>
                   <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Users className="w-5 h-5 text-primary" />
                     Campaigns with Contacts
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {campaigns.filter(c => (c.contacts_count || 0) > 0).map((campaign) => (
+                    {campaignsWithContacts.map((campaign) => (
                       <div
                         key={campaign.id}
                         onClick={() => navigate(`/companies/${campaign.id}`)}
                         className="group relative p-6 rounded-xl border bg-card hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
                       >
                         {/* Menu */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="absolute top-3 right-3 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={(e) => openEdit(campaign, e)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCampaignToDelete(campaign.id);
-                              }}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {renderCampaignMenu(campaign)}
 
                         {/* Content */}
                         <div className="flex items-center gap-3 mb-4">
@@ -327,7 +334,7 @@ export default function Campaigns() {
                         )}
 
                         <div className="mt-4 pt-3 border-t flex items-center text-sm text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                          View companies
+                          Manage companies
                           <ArrowRight className="w-4 h-4 ml-1" />
                         </div>
                       </div>
@@ -337,49 +344,22 @@ export default function Campaigns() {
               )}
 
               {/* All other campaigns (no contacts yet) */}
-              {campaigns.filter(c => (c.contacts_count || 0) === 0).length > 0 && (
+              {campaignsWithoutContacts.length > 0 && (
                 <div>
                   <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-muted-foreground">
                     <Folder className="w-5 h-5" />
-                    Campaigns in Progress
-                    <span className="text-sm font-normal">({campaigns.filter(c => (c.contacts_count || 0) === 0).length})</span>
+                    Campaigns Awaiting Contacts
+                    <span className="text-sm font-normal">({campaignsWithoutContacts.length})</span>
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {campaigns.filter(c => (c.contacts_count || 0) === 0).map((campaign) => (
+                    {campaignsWithoutContacts.map((campaign) => (
                       <div
                         key={campaign.id}
                         onClick={() => navigate(`/companies/${campaign.id}`)}
                         className="group relative p-6 rounded-xl border border-dashed bg-card/50 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer"
                       >
                         {/* Menu */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="absolute top-3 right-3 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={(e) => openEdit(campaign, e)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCampaignToDelete(campaign.id);
-                              }}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {renderCampaignMenu(campaign)}
 
                         {/* Content */}
                         <div className="flex items-center gap-3 mb-4">
@@ -412,7 +392,7 @@ export default function Campaigns() {
                         )}
 
                         <div className="mt-4 pt-3 border-t flex items-center text-sm text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                          Add companies
+                          Manage companies
                           <ArrowRight className="w-4 h-4 ml-1" />
                         </div>
                       </div>
@@ -591,7 +571,7 @@ export default function Campaigns() {
 
           <DialogFooter className="gap-2 pt-4">
             {step > 0 && (
-              <Button variant="outline" onClick={() => setStep(step - 1)}>
+              <Button variant="outline" onClick={() => setStep(step - 1)} disabled={isSaving}>
                 Back
               </Button>
             )}

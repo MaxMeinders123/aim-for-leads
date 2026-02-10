@@ -219,18 +219,6 @@ export default function ContactsView() {
     }
   };
 
-  const handleExportCSV = () => {
-    const allProspects = companyGroups.flatMap((g) =>
-      g.prospects.map((p) => ({ ...p, company_name: g.companyName })),
-    );
-    if (allProspects.length === 0) {
-      toast.error('No prospects to export');
-      return;
-    }
-    exportProspectsToCSV(allProspects, `prospects-${selectedCampaign?.name || campaignId}`);
-    toast.success(`Exported ${allProspects.length} prospects to CSV`);
-  };
-
   // Filter
   const filteredGroups = companyGroups
     .map((group) => {
@@ -253,10 +241,27 @@ export default function ContactsView() {
     })
     .filter((g) => g.prospects.length > 0);
 
-  // Stats
-  const totalProspects = companyGroups.reduce((sum, g) => sum + g.prospects.length, 0);
-  const sentCount = companyGroups.reduce((sum, g) => sum + g.sentCount, 0);
-  const unsentCount = companyGroups.reduce((sum, g) => sum + g.unsentCount, 0);
+  const handleExportCSV = () => {
+    const visibleProspects = filteredGroups.flatMap((g) =>
+      g.prospects.map((p) => ({ ...p, company_name: g.companyName })),
+    );
+
+    if (visibleProspects.length === 0) {
+      toast.error('No visible prospects to export');
+      return;
+    }
+
+    exportProspectsToCSV(visibleProspects, `prospects-${selectedCampaign?.name || campaignId}`);
+    toast.success(`Exported ${visibleProspects.length} visible prospects to CSV`);
+  };
+
+  // Stats (based on current filters)
+  const totalProspects = filteredGroups.reduce((sum, g) => sum + g.prospects.length, 0);
+  const sentCount = filteredGroups.reduce(
+    (sum, g) => sum + g.prospects.filter((p) => p.sent_to_clay).length,
+    0,
+  );
+  const unsentCount = totalProspects - sentCount;
 
   const getPriorityColor = (priority: string | null) => {
     switch (priority?.toLowerCase()) {
@@ -402,12 +407,16 @@ export default function ContactsView() {
                         <div>
                           <h3 className="font-semibold">{group.companyName}</h3>
                           <p className="text-sm text-muted-foreground">
-                            {group.unsentCount > 0 && (
-                              <span>{group.unsentCount} not sent</span>
+                            {group.prospects.filter((p) => !p.sent_to_clay).length > 0 && (
+                              <span>{group.prospects.filter((p) => !p.sent_to_clay).length} not sent</span>
                             )}
-                            {group.unsentCount > 0 && group.sentCount > 0 && ' | '}
-                            {group.sentCount > 0 && (
-                              <span className="text-green-600">{group.sentCount} sent to Clay</span>
+                            {group.prospects.some((p) => !p.sent_to_clay) &&
+                              group.prospects.some((p) => p.sent_to_clay) &&
+                              ' | '}
+                            {group.prospects.filter((p) => p.sent_to_clay).length > 0 && (
+                              <span className="text-green-600">
+                                {group.prospects.filter((p) => p.sent_to_clay).length} sent to Clay
+                              </span>
                             )}
                           </p>
                         </div>
@@ -423,10 +432,11 @@ export default function ContactsView() {
                     {isExpanded && (
                       <div className="border-t">
                         {/* Bulk send button */}
-                        {group.unsentCount > 0 && (
+                        {group.prospects.some((p) => !p.sent_to_clay) && (
                           <div className="px-4 py-3 bg-muted/30 border-b flex items-center justify-between">
                             <span className="text-sm text-muted-foreground">
-                              {group.unsentCount} prospect{group.unsentCount !== 1 ? 's' : ''} ready to send
+                              {group.prospects.filter((p) => !p.sent_to_clay).length} prospect
+                              {group.prospects.filter((p) => !p.sent_to_clay).length !== 1 ? 's' : ''} ready to send
                             </span>
                             <Button
                               size="sm"
@@ -542,7 +552,7 @@ export default function ContactsView() {
                                         ) : (
                                           <>
                                             <Send className="h-4 w-4 mr-1" />
-                                            Resend
+                                            Resend to Clay
                                           </>
                                         )}
                                       </Button>
