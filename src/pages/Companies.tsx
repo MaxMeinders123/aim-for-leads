@@ -15,6 +15,7 @@ import {
   Users,
   Trash2,
   ChevronDown,
+  Info,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -25,6 +26,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   Collapsible,
   CollapsibleContent,
@@ -106,6 +108,7 @@ export default function Companies() {
   const [isAddingManual, setIsAddingManual] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [reResearchingId, setReResearchingId] = useState<string | null>(null);
+  const [showOnboardingGuide, setShowOnboardingGuide] = useState(false);
 
   // Set selected campaign from URL
   useEffect(() => {
@@ -114,6 +117,23 @@ export default function Companies() {
       if (campaign) setSelectedCampaign(campaign);
     }
   }, [campaignId, campaigns, setSelectedCampaign]);
+
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `afl_onboarding_seen_${user.id}`;
+    const alreadySeen = localStorage.getItem(key);
+    if (!alreadySeen) {
+      setShowOnboardingGuide(true);
+    }
+  }, [user?.id]);
+
+  const closeOnboardingGuide = () => {
+    if (user?.id) {
+      localStorage.setItem(`afl_onboarding_seen_${user.id}`, 'true');
+    }
+    setShowOnboardingGuide(false);
+  };
 
   const loadCompanies = useCallback(async () => {
     if (!campaignId) return;
@@ -595,6 +615,16 @@ export default function Companies() {
             {/* Salesforce Import Tab */}
             <TabsContent value="salesforce" className="space-y-6">
               <div className="p-5 rounded-xl border bg-card space-y-4">
+                <div className="rounded-lg border border-blue-200/60 bg-blue-50/70 dark:bg-blue-950/20 dark:border-blue-900/50 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium text-blue-800 dark:text-blue-200">
+                    <Info className="w-4 h-4" />
+                    Quick reminder before import
+                  </div>
+                  <p className="mt-1 text-blue-900/90 dark:text-blue-100/90">
+                    In Salesforce, set Prospecting Status to <strong>Target Account</strong> first. Then copy the Campaign ID from the URL (starts with <strong>701...</strong>).
+                    This tool is in beta, so a manual check before sending to Clay is strongly recommended.
+                  </p>
+                </div>
                 <div>
                   <Label htmlFor="sfCampaignId" className="text-base font-medium">
                     Import from Salesforce
@@ -707,6 +737,27 @@ export default function Companies() {
           </div>
         )}
       </div>
+
+      <Dialog open={showOnboardingGuide} onOpenChange={(open) => !open && closeOnboardingGuide()}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Welcome — quick setup guide (beta)</DialogTitle>
+            <DialogDescription>
+              Honest note: this workflow is useful, but not perfect yet. Please do a quick manual review before sending prospects to Clay.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p><strong>1) In Salesforce:</strong> open your campaign and set Prospecting Status to <strong>Target Account</strong>.</p>
+            <p><strong>2) Copy Campaign ID:</strong> from the URL, use the ID that looks like <strong>701...</strong>.</p>
+            <p><strong>3) Import & Research:</strong> paste the ID here, import companies, select them, and press <strong>Start Research</strong>.</p>
+            <p><strong>4) Before Clay:</strong> we recommend a fast manual check. Clay feedback will show whether a prospect was added to Salesforce or flagged as duplicate.</p>
+            <div className="pt-2">
+              <Button onClick={closeOnboardingGuide} className="w-full">Got it, let’s start</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </AppLayout>
   );
 }

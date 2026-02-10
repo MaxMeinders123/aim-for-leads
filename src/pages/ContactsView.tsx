@@ -203,7 +203,7 @@ export default function ContactsView() {
     try {
       const result = await sendProspectToClay(prospectId, user.id);
       if (result.sent > 0) {
-        toast.success('Prospect sent to Clay');
+        toast.success('Prospect sent to Clay. Waiting for Clay feedback...');
         await loadData();
       } else {
         toast.error(result.results?.[0]?.error || 'Failed to send to Clay');
@@ -229,7 +229,7 @@ export default function ContactsView() {
     unsentIds.forEach((id) => setSendingIds((prev) => new Set(prev).add(id)));
     try {
       const result = await sendBulkToClay(unsentIds, user.id);
-      toast.success(`Sent ${result.sent} of ${unsentIds.length} prospects to Clay`);
+      toast.success(`Sent ${result.sent} of ${unsentIds.length} prospects to Clay. Waiting for feedback...`);
       await loadData();
     } catch (err: unknown) {
       logger.error('Failed to send group prospects to Clay', {
@@ -297,6 +297,23 @@ export default function ContactsView() {
     0,
   );
   const unsentCount = totalProspects - sentCount;
+
+
+  const getClayStatusMeta = (status: string | null, sentToClay: boolean) => {
+    if (status === CLAY_STATUSES.DUPLICATE) {
+      return { label: 'Duplicate in Salesforce', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' };
+    }
+    if (status === CLAY_STATUSES.INPUTTED) {
+      return { label: 'Added to Salesforce', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' };
+    }
+    if (status === CLAY_STATUSES.FAILED) {
+      return { label: 'Clay failed', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' };
+    }
+    if (status === CLAY_STATUSES.SENT || status === CLAY_STATUSES.PENDING || sentToClay) {
+      return { label: 'Waiting for Clay feedback', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' };
+    }
+    return { label: 'Not sent', className: 'bg-muted text-muted-foreground' };
+  };
 
   const getPriorityColor = (priority: string | null) => {
     switch (priority?.toLowerCase()) {
@@ -523,6 +540,9 @@ export default function ContactsView() {
                                           {prospect.priority}
                                         </Badge>
                                       )}
+                                      <Badge className={getClayStatusMeta(prospect.status, prospect.sent_to_clay).className}>
+                                        {getClayStatusMeta(prospect.status, prospect.sent_to_clay).label}
+                                      </Badge>
                                       {prospect.pitch_type && (
                                         <Badge variant="outline" className="text-xs">{prospect.pitch_type}</Badge>
                                       )}
@@ -598,7 +618,7 @@ export default function ContactsView() {
                                         ) : (
                                           <>
                                             <Send className="h-4 w-4 mr-1" />
-                                            Resend to Clay
+                                            Send to Clay Again
                                           </>
                                         )}
                                       </Button>

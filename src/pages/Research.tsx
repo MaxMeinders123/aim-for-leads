@@ -105,26 +105,28 @@ export default function Research() {
 
       try {
         if (stepToRetry === 'company') {
-        updateCompanyProgress(companyId, { step: 'company', error: undefined });
-        try {
-          const payload = buildCompanyResearchPayload(selectedCampaign, company, user.id);
-          const webhookUrl = getResolvedWebhookUrl('company_research', userWebhooks);
-          const data = await callResearchProxy(webhookUrl, payload);
-          const parsed = data ? (parseAIResponse(data) as CompanyResearchResult) : null;
-          updateCompanyProgress(companyId, { step: 'people', companyData: parsed || undefined });
-          toast.success(`Company research complete for ${company.name}`);
-        } catch (err: unknown) {
-          updateCompanyProgress(companyId, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
-          toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          updateCompanyProgress(companyId, { step: 'company', error: undefined });
+          try {
+            const payload = buildCompanyResearchPayload(selectedCampaign, company, user.id);
+            const webhookUrl = getResolvedWebhookUrl('company_research', userWebhooks);
+            const data = await callResearchProxy(webhookUrl, payload);
+            const parsed = data ? (parseAIResponse(data) as CompanyResearchResult) : null;
+            updateCompanyProgress(companyId, { step: 'people', companyData: parsed || undefined });
+            toast.success(`Company research complete for ${company.name}`);
+          } catch (err: unknown) {
+            logger.error('Retry company research failed', { companyId, err });
+            updateCompanyProgress(companyId, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
+            toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
+          return;
         }
-      }
 
-      if (stepToRetry === 'people') {
         const existing = companiesProgress.find((p) => p.companyId === companyId);
         if (!existing?.company_research_id) {
           toast.error('Missing company research ID. Retry company research first.');
           return;
         }
+
         updateCompanyProgress(companyId, { step: 'people', error: undefined });
         try {
           const payload = buildProspectResearchPayload(
@@ -137,8 +139,6 @@ export default function Research() {
           const webhookUrl = getResolvedWebhookUrl('people_research', userWebhooks);
           const data = await callResearchProxy(webhookUrl, payload);
 
-          // n8n uses backgroundMode on the AI node, so the webhook may respond
-          // before contacts are ready. Check if the response has actual contacts.
           const parsed = data ? (parseAIResponse(data) as PeopleResearchResult) : null;
           const hasContacts = parsed?.contacts && Array.isArray(parsed.contacts) && parsed.contacts.length > 0;
 
@@ -146,15 +146,13 @@ export default function Research() {
             updateCompanyProgress(companyId, { step: 'complete', peopleData: parsed || undefined });
             toast.success(`Prospect research complete for ${company.name}`);
           } else {
-            // No contacts in response - n8n is processing in the background.
-            // Results will arrive via realtime subscription on prospect_research table.
             updateCompanyProgress(companyId, { step: 'awaiting_callback' });
             toast.info(`Prospect research started for ${company.name}. Results will appear automatically.`);
           }
         } catch (err: unknown) {
+          logger.error('Retry prospect research failed', { companyId, err });
           updateCompanyProgress(companyId, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
           toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-        }
         }
       } finally {
         setRetryingCompanyIds((prev) => {
