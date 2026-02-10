@@ -28,14 +28,6 @@ export function AppSidebar() {
   const { user, setUser } = useAppStore();
 
   const isActive = (url: string) => {
-    if (url === '/campaigns') {
-      return (
-        location.pathname === '/campaigns' ||
-        location.pathname.startsWith('/companies/') ||
-        location.pathname.startsWith('/research/') ||
-        location.pathname.startsWith('/contacts/')
-      );
-    }
     return location.pathname === url;
   };
 
