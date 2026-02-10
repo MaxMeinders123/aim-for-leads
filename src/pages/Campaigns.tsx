@@ -294,7 +294,7 @@ export default function Campaigns() {
                     Campaigns with Contacts
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {campaignsWithContacts.map((campaign) => (
+                    {campaignsWithContacts.map((campaign, index) => (
                       <div
                         key={campaign.id}
                         onClick={() => navigate(`/companies/${campaign.id}`)}
@@ -309,7 +309,10 @@ export default function Campaigns() {
                             <Folder className="w-5 h-5 text-primary" />
                           </div>
                           <div className="flex-1 min-w-0 pr-8">
-                            <h3 className="font-semibold text-foreground truncate">{campaign.name}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-foreground truncate">{campaign.name}</h3>
+                              <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full"># {index + 1}</span>
+                            </div>
                             {campaign.product && (
                               <p className="text-sm text-muted-foreground truncate">{campaign.product}</p>
                             )}
@@ -352,7 +355,7 @@ export default function Campaigns() {
                     <span className="text-sm font-normal">({campaignsWithoutContacts.length})</span>
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {campaignsWithoutContacts.map((campaign) => (
+                    {campaignsWithoutContacts.map((campaign, index) => (
                       <div
                         key={campaign.id}
                         onClick={() => navigate(`/companies/${campaign.id}`)}
@@ -367,7 +370,10 @@ export default function Campaigns() {
                             <Folder className="w-5 h-5 text-muted-foreground" />
                           </div>
                           <div className="flex-1 min-w-0 pr-8">
-                            <h3 className="font-semibold text-foreground truncate">{campaign.name}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-foreground truncate">{campaign.name}</h3>
+                              <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full"># {index + 1}</span>
+                            </div>
                             {campaign.product && (
                               <p className="text-sm text-muted-foreground truncate">{campaign.product}</p>
                             )}

@@ -81,8 +81,6 @@ export default function Companies() {
     companies,
     setCompanies,
     toggleCompanySelection,
-    selectAllCompanies,
-    deselectAllCompanies,
     campaigns,
     setSelectedCampaign,
     selectedCampaign,
@@ -310,6 +308,18 @@ export default function Companies() {
     navigate(`/research/${campaignId}`);
   };
 
+  const toggleCompanySelectionScoped = (companyId: string, scopedIds: Set<string>) => {
+    toggleCompanySelection(companyId);
+
+    const selectedAfterToggle = companies
+      .filter((c) => scopedIds.has(c.id))
+      .filter((c) => (c.id === companyId ? !c.selected : c.selected)).length;
+
+    if (selectedAfterToggle === 0) {
+      toast.info('No companies selected in this tab');
+    }
+  };
+
   const handleDeleteSelected = async () => {
     const selectedIds = pendingCompanies.filter(c => c.selected).map(c => c.id);
     if (selectedIds.length === 0) {
@@ -421,6 +431,8 @@ export default function Companies() {
   };
 
   const renderCompanyTable = (companyList: Company[]) => {
+    const scopedIds = new Set(companyList.map((c) => c.id));
+    const scopedSelectedCount = companyList.filter((c) => c.selected).length;
     if (isLoadingCompanies) {
       return (
         <div className="space-y-3">
@@ -450,14 +462,17 @@ export default function Companies() {
         {/* Select All */}
         <div className="flex items-center gap-3 px-4 py-3 bg-muted/50 border-b">
           <Checkbox
-            checked={companyList.every((c) => c.selected)}
+            checked={companyList.length > 0 && companyList.every((c) => c.selected)}
             onCheckedChange={(checked) => {
-              if (checked) selectAllCompanies();
-              else deselectAllCompanies();
+              setCompanies(
+                companies.map((company) =>
+                  scopedIds.has(company.id) ? { ...company, selected: !!checked } : company,
+                ),
+              );
             }}
           />
           <span className="text-sm font-medium text-muted-foreground flex-1">
-            {companyList.filter((c) => c.selected).length} of {companyList.length} selected
+            {scopedSelectedCount} of {companyList.length} selected
           </span>
           {companyList.some((c) => c.selected) && (
             <Button
@@ -482,7 +497,7 @@ export default function Companies() {
           {companyList.map((company) => (
             <div
               key={company.id}
-              onClick={() => toggleCompanySelection(company.id)}
+              onClick={() => toggleCompanySelectionScoped(company.id, scopedIds)}
               className={cn(
                 'flex items-center gap-4 px-4 py-3.5 cursor-pointer transition-colors',
                 company.selected ? 'bg-primary/5' : 'hover:bg-muted/30',
@@ -490,7 +505,8 @@ export default function Companies() {
             >
               <Checkbox
                 checked={company.selected}
-                onCheckedChange={() => toggleCompanySelection(company.id)}
+                onClick={(e) => e.stopPropagation()}
+                onCheckedChange={() => toggleCompanySelectionScoped(company.id, scopedIds)}
               />
 
               <div className="flex-1 min-w-0">
