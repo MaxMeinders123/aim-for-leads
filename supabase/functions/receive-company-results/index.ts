@@ -118,7 +118,7 @@ serve(async (req) => {
     }
 
     // Extract normalized fields from company_data
-    const companyName = company_data?.company || null;
+    const companyName = company_data?.company || company_data?.company_name || body.company_name || null;
     const companyStatus = company_data?.company_status || null;
     const acquiredBy = company_data?.acquiredBy || null;
     const cloudProvider = company_data?.cloud_preference?.provider || null;
@@ -133,7 +133,7 @@ serve(async (req) => {
         company_domain,
         campaign_id: campaign_id || null,
         salesforce_account_id: salesforce_account_id || null,
-        company_name: companyName,
+        company_name: companyName, // Will be updated below if null and company found in companies table
         status: status === "rejected" ? "failed" : "completed",
         company_status: companyStatus,
         acquired_by: acquiredBy,
@@ -259,6 +259,14 @@ serve(async (req) => {
               website: matchingCompany.website || company_domain,
               linkedin: matchingCompany.linkedin_url || "",
             };
+
+            // Backfill company_name on the research record if it was null
+            if (!companyName && matchingCompany.name) {
+              await supabase
+                .from("company_research")
+                .update({ company_name: matchingCompany.name })
+                .eq("id", insertedRecord.id);
+            }
           }
         }
 
