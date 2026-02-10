@@ -164,7 +164,11 @@ export default function Research() {
     if (isProcessingRef.current || !isRunning) return;
     isProcessingRef.current = true;
 
-    const selectedCompanies = companies.filter((c) => c.selected);
+    // Use companiesProgress (set from selected companies on Companies page)
+    // instead of re-filtering companies, which could include stale selections.
+    const selectedCompanies = companiesProgress
+      .map((p) => companies.find((c) => c.id === p.companyId))
+      .filter((c): c is Company => !!c);
 
     for (let i = 0; i < selectedCompanies.length; i++) {
       const company = selectedCompanies[i];
