@@ -1,0 +1,173 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a B2B company research analyst. Your job: validate company status and detect cloud infrastructure.\n\n🎯 PRIMARY OBJECTIVES:\n1. Determine company operational status (Operating/Acquired/Bankrupt/Not_Found)\n2. Detect which cloud provider they use (AWS/Azure/GCP/Other)\n3. Assess if they're a good fit for the product being sold\n\n📋 RESEARCH PROCESS:\n\nSTEP 1: VALIDATE COMPANY STATUS\n- Search web: \"[Company]\" \"acquired\" OR \"merger\" OR \"bankruptcy\"\n- Search company website for recent updates (check /about, /news, /press)\n- Search: \"[Company]\" site:crunchbase.com OR site:pitchbook.com\n- Determine:\n  * Operating: Active business with recent activity\n  * Acquired: Bought by another company (note acquirer + date)\n  * Bankrupt: Out of business or in bankruptcy proceedings\n  * Not_Found: Company doesn't exist or no credible web presence\n\nSTEP 2: DETECT CLOUD PROVIDER (AWS/Azure/GCP/Other)\n- Search: \"[Company]\" \"AWS\" OR \"Amazon Web Services\"\n- Search: \"[Company]\" \"Azure\" OR \"Microsoft Cloud\"\n- Search: \"[Company]\" \"GCP\" OR \"Google Cloud Platform\"\n- Search: site:[company-domain] \"AWS\" OR \"Azure\" OR \"GCP\" OR \"cloud\"\n- Look for:\n  * Job postings mentioning AWS/Azure/GCP\n  * Case studies on cloud provider websites\n  * Tech stack mentions in company blog/careers pages\n  * Cloud provider partner badges on website\n- If no evidence found, return \"Other\" with low confidence\n\nSTEP 3: ASSESS COMPANY FIT\n- Industry: What industry/vertical? (logistics, fintech, healthcare, etc.)\n- Size: Estimate employee count (search LinkedIn, Crunchbase)\n- Technology maturity: Do they mention cloud, digital transformation, IT modernization?\n- Relevance: Based on campaign product/pain points, are they a good target?\n\n🎯 CONFIDENCE SCORING:\n- Cloud Provider Confidence (0-100):\n  * 90-100: Direct evidence (case study, job posts, official partnership)\n  * 60-89: Strong indirect evidence (blog posts, tech stack mentions)\n  * 30-59: Weak signals (generic cloud mentions, inferred from industry)\n  * 0-29: No evidence, pure guess\n\n📤 OUTPUT JSON:\n{\n  \"company\": \"CompanyName\",\n  \"company_status\": \"Operating\",\n  \"acquiredBy\": null,\n  \"effectiveDate\": null,\n  \"stillOperatesIndependently\": true,\n  \"cloud_preference\": {\n    \"provider\": \"AWS\",\n    \"confidence\": 85,\n    \"evidence\": \"Found AWS job postings and mention of S3/EC2 on careers page\"\n  },\n  \"summary\": \"Brief 2-3 sentence summary of what the company does, their industry, estimated size, and why they're relevant for this campaign.\",\n  \"qualify\": true\n}\n\n🚨 CRITICAL RULES:\n- DO NOT guess cloud provider without evidence - use \"Other\" if unsure\n- BE HONEST about confidence levels - low confidence is better than false positives\n- If company status is Acquired, note: acquiredBy, effectiveDate, stillOperatesIndependently\n- If company status is Bankrupt or Not_Found, set qualify: false\n- Summary should be concise but informative (2-3 sentences max)\n- qualify should be true ONLY if: status is Operating AND company is relevant to campaign\n\nBudget: High web search context\nMax iterations: 20",
+          "maxIterations": 20
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        11040,
+        2464
+      ],
+      "id": "company-research-agent",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "high"
+          }
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        10992,
+        2656
+      ],
+      "id": "openai-model-company",
+      "name": "OpenAI Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "MvQi1874NPMQ2ug7",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = $input.item.json;\nconst webhookData = $items('Prepare Input')[0].json.webhookData;\n\nlet parsed;\ntry {\n  let text = aiOutput.output || aiOutput.text || JSON.stringify(aiOutput);\n  text = text.trim().replace(/```json\\n?/g, '').replace(/```\\n?/g, '');\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);\n} catch (e) {\n  console.error('Parse error:', e.message);\n  return [{\n    json: {\n      user_id: webhookData.user_id,\n      campaign_id: webhookData.campaign_id,\n      company_id: webhookData.company_id,\n      salesforce_account_id: webhookData.salesforce_account_id,\n      salesforce_campaign_id: webhookData.salesforce_campaign_id,\n      companyResearch: {\n        company_status: 'error',\n        acquiredBy: null,\n        effectiveDate: null,\n        stillOperatesIndependently: true,\n        cloud_preference: {\n          provider: 'Other',\n          confidence: 0,\n          evidence: 'Research failed'\n        },\n        summary: `Failed to research ${webhookData.company.name}: ${e.message}`,\n        qualify: false\n      }\n    }\n  }];\n}\n\n// Validate required fields\nif (!parsed.company_status) {\n  parsed.company_status = 'error';\n}\n\nif (!parsed.cloud_preference || !parsed.cloud_preference.provider) {\n  parsed.cloud_preference = {\n    provider: 'Other',\n    confidence: 0,\n    evidence: 'No cloud provider detected'\n  };\n}\n\nif (!parsed.summary) {\n  parsed.summary = `Research completed for ${webhookData.company.name}`;\n}\n\nif (parsed.qualify === undefined) {\n  parsed.qualify = parsed.company_status === 'Operating';\n}\n\n// Set defaults for acquisition fields\nif (!parsed.acquiredBy) parsed.acquiredBy = null;\nif (!parsed.effectiveDate) parsed.effectiveDate = null;\nif (parsed.stillOperatesIndependently === undefined) {\n  parsed.stillOperatesIndependently = parsed.company_status !== 'Acquired';\n}\n\nreturn [{\n  json: {\n    user_id: webhookData.user_id,\n    campaign_id: webhookData.campaign_id,\n    company_id: webhookData.company_id,\n    salesforce_account_id: webhookData.salesforce_account_id,\n    salesforce_campaign_id: webhookData.salesforce_campaign_id,\n    companyResearch: parsed\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11360,
+        2464
+      ],
+      "id": "format-company-output",
+      "name": "Format Output"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-company-results",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        11520,
+        2464
+      ],
+      "id": "company-callback",
+      "name": "Callback"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "company-research-webhook",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        10640,
+        2464
+      ],
+      "id": "company-webhook",
+      "name": "Company Research Webhook",
+      "webhookId": "company-research-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\n\nconst companyName = body.company?.name || '';\nconst companyWebsite = body.company?.website || '';\nconst companyDomain = companyWebsite.replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0];\n\nconst product = body.campaign?.product || '';\nconst primaryAngle = body.campaign?.primaryAngle || '';\nconst techFocus = body.campaign?.techFocus || '';\nconst targetRegion = body.campaign?.targetRegion || '';\nconst targetVerticals = body.campaign?.targetVerticals || '';\n\nconst painPointsRaw = body.campaign?.painPoints || '';\nconst painPointsArray = painPointsRaw.split('\\n').filter(p => p.trim().length > 15);\nconst painPoints = painPointsArray.slice(0, 5).join('; ');\n\nconst chatInput = `Research company: ${companyName}\n\nCOMPANY INFO:\n- Name: ${companyName}\n- Website: ${companyWebsite}\n- Domain: ${companyDomain}\n- Region: ${targetRegion}\n\nCAMPAIGN CONTEXT:\n- Product: ${product}\n- Value Prop: ${primaryAngle}\n- Tech Focus: ${techFocus}\n- Target Verticals: ${targetVerticals}\n- Pain Points We Solve: ${painPoints}\n\nYOUR TASKS:\n\n1. VALIDATE COMPANY STATUS\n   - Is this company Operating, Acquired, Bankrupt, or Not_Found?\n   - If acquired: by whom, when, do they operate independently?\n\n2. DETECT CLOUD PROVIDER\n   - Do they use AWS, Azure, GCP, or Other?\n   - What's your confidence level (0-100)?\n   - What evidence did you find?\n\n3. ASSESS FIT\n   - What industry/vertical?\n   - Estimated company size?\n   - Are they a good fit for: ${product}?\n   - Should we qualify them (true/false)?\n\nReturn JSON with your findings.`;\n\nreturn [{\n  json: {\n    chatInput: chatInput,\n    webhookData: body\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10848,
+        2464
+      ],
+      "id": "prepare-company-input",
+      "name": "Prepare Input"
+    }
+  ],
+  "connections": {
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Output": {
+      "main": [
+        [
+          {
+            "node": "Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Research Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e9cede33a723de861755fc4c3b19745bba65cbc53a84a89eef946fc41c7f58e4"
+  }
+}
