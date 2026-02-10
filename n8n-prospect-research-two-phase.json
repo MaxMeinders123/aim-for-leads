@@ -1,0 +1,287 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "You are an IT/Cloud prospect researcher. Your job has TWO PHASES:\n\n🔍 PHASE 1: USE WEB SEARCH TO FIND 5-7 REAL PEOPLE\n🔗 PHASE 2: USE search_linkedin TOOL TO GET THEIR LINKEDIN URLS\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔍 PHASE 1: FIND PEOPLE (Use built-in web search extensively)\n\nYour goal: Find 5-7 real IT/Cloud decision-makers who CURRENTLY work at this company.\n\nSEARCH STRATEGY (Use web search tool for ALL of these):\n\n1. Search LinkedIn company page:\n   - \"[Company]\" site:linkedin.com/company employees\n   - Look for employees in Technology, Engineering, IT, Cloud, Infrastructure roles\n   - Get their full names and job titles\n\n2. Search for specific IT roles:\n   - \"[Company]\" \"CTO\" OR \"Chief Technology Officer\" site:linkedin.com\n   - \"[Company]\" \"Head of IT\" OR \"IT Director\" OR \"Director of IT\" site:linkedin.com\n   - \"[Company]\" \"Head of Infrastructure\" OR \"Infrastructure Manager\" site:linkedin.com\n   - \"[Company]\" \"Cloud Architect\" OR \"Head of Cloud\" site:linkedin.com\n   - \"[Company]\" \"DevOps Manager\" OR \"SRE Manager\" site:linkedin.com\n   - \"[Company]\" \"CISO\" OR \"Head of Security\" site:linkedin.com\n\n3. Search company website:\n   - site:[company-domain] \"team\" OR \"about\" OR \"leadership\"\n   - Look for IT/Technology leadership\n\n4. Search for job postings (reveals who's hiring/managing IT):\n   - \"[Company]\" \"we are hiring\" \"reports to\" (CTO OR \"IT Director\")\n\n5. Verify current employment:\n   - For each person found, verify they CURRENTLY work at [Company]\n   - Look for recent LinkedIn activity, company website mentions, or recent articles\n   - DISCARD people who left or never worked there\n\nTARGET TITLES TO FIND:\n- CTO, VP Engineering, Director of IT, Head of IT\n- Head of Infrastructure, Head of Cloud, Cloud Platform Lead\n- IT Operations Director, Infrastructure Manager\n- DevOps Manager, SRE Manager, Cloud Architect\n- CISO, Head of Security, Cloud Security Architect\n\nDO NOT RETURN:\n- HR, Sales, Marketing, Operations, Finance (unless \"Cloud Cost Manager\" or \"IT Finance Manager\")\n- People who don't work there anymore\n- People who never worked there\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔗 PHASE 2: GET LINKEDIN URLS (Use search_linkedin tool for each person)\n\nOnce you have 5-7 people from Phase 1, get their LinkedIn URLs:\n\nFor EACH person:\n1. Call search_linkedin tool with query: \"FirstName LastName\" \"Company\" site:linkedin.com/in/\n2. Extract the LinkedIn /in/ URL from results\n3. Verify:\n   - URL starts with https://linkedin.com/in/ or https://[country].linkedin.com/in/\n   - Name matches the person you found\n   - Company matches\n4. If no valid URL found, try again with different query variations\n5. If still no URL after 2 tries, SKIP that person\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📤 OUTPUT JSON:\n\n{\n  \"company\": \"CompanyName\",\n  \"status\": \"completed\",\n  \"contacts\": [\n    {\n      \"first_name\": \"John\",\n      \"last_name\": \"Smith\",\n      \"job_title\": \"CTO\",\n      \"linkedin\": \"https://linkedin.com/in/johnsmith\",\n      \"priority\": \"High\",\n      \"priority_reason\": \"CTO with authority over cloud infrastructure and budget\",\n      \"pitch_type\": \"Technical Executive\"\n    }\n  ]\n}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🚨 CRITICAL RULES:\n\n1. DO NOT be conservative - aim for 5-7 people, not 1-2\n2. ONLY return people who CURRENTLY work at the company\n3. VERIFY current employment before including someone\n4. DO NOT invent LinkedIn URLs - always use search_linkedin tool\n5. Each person MUST have a valid LinkedIn /in/ URL\n6. If you can only verify 3-4 people, that's fine (quality > quantity)\n7. DO NOT return people with non-IT titles (HR, Sales, Marketing, etc.)\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nPRIORITY LEVELS:\n- High: CTO, VP Engineering, Head of IT, Head of Cloud, CISO, Director of IT\n- Medium: Cloud Architect, Infrastructure Manager, DevOps Manager, IT Operations Director\n- Low: Only if they report to High/Medium and influence decisions\n\nPITCH TYPES:\n- Technical Executive: C-level/VP/Head with technical background + budget authority\n- Technical Leader: Director/Manager with hands-on technical responsibility\n- FinOps: Cloud Cost Manager, IT Finance Manager\n- Security: CISO, Cloud Security Architect\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nTOOL BUDGET:\n- web search (built-in): UNLIMITED - use extensively in Phase 1\n- search_linkedin: 15 calls max - use ONLY in Phase 2 for LinkedIn URLs\n- Max iterations: 30\n\nNow execute BOTH phases step-by-step.",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        11040,
+        2464
+      ],
+      "id": "d63e82e3-14b9-41e7-abe4-153260234a32",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "high"
+          }
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        10992,
+        2656
+      ],
+      "id": "f203a15d-c398-4852-8ee8-f95b61d9719d",
+      "name": "OpenAI Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "MvQi1874NPMQ2ug7",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-KEY",
+              "value": "331d5fd92fb20aa9b798c1d46d8777ae23f92119"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('JSON', `LinkedIn profile URL search - must include: person's name, company name, and site:linkedin.com/in/`, 'json') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        11184,
+        2656
+      ],
+      "id": "ce392627-3c17-49a1-ad2c-4d77df88eef5",
+      "name": "search_linkedin"
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = $input.item.json;\nconst webhookData = $items('Prepare Input')[0].json.webhookData;\n\nlet parsed;\ntry {\n  let text = aiOutput.output || aiOutput.text || JSON.stringify(aiOutput);\n  text = text.trim().replace(/```json\\n?/g, '').replace(/```\\n?/g, '');\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);\n  if (!parsed.contacts || !Array.isArray(parsed.contacts)) {\n    throw new Error('Missing contacts');\n  }\n} catch (e) {\n  return [{\n    json: {\n      user_id: webhookData.user_id,\n      campaign_id: webhookData.campaign_id,\n      company_research_id: webhookData.company_research_id,\n      company_domain: webhookData.company_domain,\n      salesforce_account_id: webhookData.salesforce_account_id,\n      salesforce_campaign_id: webhookData.salesforce_campaign_id,\n      prospect: {\n        status: 'error',\n        company: webhookData.company.name,\n        contacts: []\n      }\n    }\n  }];\n}\n\nconst validContacts = parsed.contacts.filter(c => c.first_name && c.last_name && c.linkedin && c.linkedin.startsWith('http'));\n\nif (validContacts.length === 0) {\n  return [{\n    json: {\n      user_id: webhookData.user_id,\n      campaign_id: webhookData.campaign_id,\n      company_research_id: webhookData.company_research_id,\n      company_domain: webhookData.company_domain,\n      salesforce_account_id: webhookData.salesforce_account_id,\n      salesforce_campaign_id: webhookData.salesforce_campaign_id,\n      prospect: {\n        status: 'error',\n        company: webhookData.company.name,\n        contacts: []\n      }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    user_id: webhookData.user_id,\n    campaign_id: webhookData.campaign_id,\n    company_research_id: webhookData.company_research_id,\n    company_domain: webhookData.company_domain,\n    salesforce_account_id: webhookData.salesforce_account_id,\n    salesforce_campaign_id: webhookData.salesforce_campaign_id,\n    prospect: {\n      status: parsed.status || 'completed',\n      company: parsed.company || webhookData.company.name,\n      contacts: validContacts\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11360,
+        2464
+      ],
+      "id": "a3471fe3-5b23-41dc-9c4a-8a10c3b2805b",
+      "name": "Format Output"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        11520,
+        2464
+      ],
+      "id": "24d5642e-8ae9-4c03-a419-7ea83950c198",
+      "name": "Callback"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        10640,
+        2464
+      ],
+      "id": "b0e67279-30b0-413e-8413-2ca11c10f381",
+      "name": "Prospect Research Webhook",
+      "webhookId": "845a71b9-f7fd-4466-9599-3cb79e34d3a4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\n\nconst companyName = body.company?.name || '';\nconst companyWebsite = body.company?.website || '';\nconst companyDomain = companyWebsite.replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0];\n\n// Target titles - THE PRIMARY FILTER\nconst targetTitlesRaw = body.campaign?.targetTitles || '';\nconst targetTitlesArray = targetTitlesRaw.split('\\n').map(t => t.trim()).filter(t => t.length > 0);\nconst targetTitles = targetTitlesArray.slice(0, 15).join(', ');\n\n// Top 3 for focused searches\nconst topTitles = targetTitlesArray.slice(0, 3).join(', ');\n\nconst painPointsRaw = body.campaign?.painPoints || '';\nconst painPointsArray = painPointsRaw.split('\\n').filter(p => p.trim().length > 15);\nconst painPoints = painPointsArray.slice(0, 5).join('; ');\n\nconst techFocus = body.campaign?.techFocus || '';\nconst region = body.campaign?.targetRegion || '';\nconst companySummary = body.companyResearch?.summary || '';\n\nconst chatInput = `Find 5-7 IT/Cloud decision-makers at ${companyName} who CURRENTLY work there.\n\n🎯 TARGET TITLES (find people with these titles):\n${targetTitles}\n\nTop Priority: ${topTitles}\n\nCOMPANY INFO:\n- Name: ${companyName}\n- Website: ${companyWebsite}\n- Domain: ${companyDomain}\n- Region: ${region}\n- Industry: ${companySummary}\n\nPRODUCT CONTEXT:\n- Product: ${body.campaign?.product || ''}\n- Value: ${body.campaign?.primaryAngle || ''}\n- Tech Focus: ${techFocus}\n- Pain Points: ${painPoints}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔍 PHASE 1: Use WEB SEARCH extensively to find 5-7 real people\n\nSearch strategies (use built-in web search for ALL of these):\n1. \"${companyName}\" site:linkedin.com/company employees\n2. \"${companyName}\" \"CTO\" OR \"Head of IT\" OR \"IT Director\" site:linkedin.com\n3. \"${companyName}\" \"Cloud Architect\" OR \"Infrastructure Manager\" site:linkedin.com\n4. \"${companyName}\" \"DevOps\" OR \"SRE\" OR \"Platform Engineer\" site:linkedin.com\n5. site:${companyDomain} \"team\" OR \"leadership\" OR \"about\"\n\nFor each person found:\n- Get their FULL NAME and JOB TITLE\n- VERIFY they currently work at ${companyName} (check LinkedIn, company site, recent articles)\n- DISCARD if they left or never worked there\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔗 PHASE 2: Use search_linkedin tool to get LinkedIn URLs\n\nFor EACH person from Phase 1:\n1. Call search_linkedin with: \"FirstName LastName\" \"${companyName}\" site:linkedin.com/in/\n2. Extract the /in/ URL\n3. Verify it's valid and matches the person\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nGOAL: Return 5-7 people with valid LinkedIn URLs. DO NOT be conservative - find as many real IT people as you can verify.\n\nReturn JSON with contacts.`;\n\nreturn [{\n  json: {\n    chatInput: chatInput,\n    webhookData: body\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10848,
+        2464
+      ],
+      "id": "6fbc6523-4e97-4335-9aec-92bf49d636dc",
+      "name": "Prepare Input"
+    }
+  ],
+  "connections": {
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_linkedin": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Output": {
+      "main": [
+        [
+          {
+            "node": "Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prospect Research Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Prospect Research Webhook": [
+      {
+        "headers": {
+          "host": "engagetech12.app.n8n.cloud",
+          "user-agent": "Deno/2.1.4 (variant; SupabaseEdgeRuntime/1.70.1)",
+          "content-length": "2984",
+          "accept": "*/*",
+          "accept-encoding": "gzip, br",
+          "accept-language": "*",
+          "cdn-loop": "cloudflare; loops=1; subreqs=1",
+          "cf-connecting-ip": "2a05:d014:61b:2709:9e2c:c5d6:6a4a:a14e",
+          "cf-ew-via": "15",
+          "cf-ipcountry": "DE",
+          "cf-ray": "9cadab3c57b2dc9d-FRA",
+          "cf-visitor": "{\"scheme\":\"https\"}",
+          "cf-worker": "n8n.cloud",
+          "content-type": "application/json",
+          "x-forwarded-for": "2a05:d014:61b:2709:9e2c:c5d6:6a4a:a14e, 172.71.148.133",
+          "x-forwarded-host": "engagetech12.app.n8n.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "traefik-prod-users-gwc-33-6b64989c5-5dgqt",
+          "x-is-trusted": "yes",
+          "x-real-ip": "2a05:d014:61b:2709:9e2c:c5d6:6a4a:a14e"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "user_id": "389efdac-258e-4a05-82ed-c74365b57405",
+          "campaign_id": "147f58de-2045-4687-ab0a-2920081355b7",
+          "company_id": "9ef32a73-af0c-4cdc-b5e7-6bb496323112",
+          "company_research_id": "2e95f26b-9ce8-429e-af0a-f3342a5daad1",
+          "company_domain": "nedcargo.com",
+          "salesforce_account_id": "001D000000kIbKVIA0",
+          "salesforce_campaign_id": "701Q400000a91BVIAY",
+          "campaign": {
+            "campaignName": "Noventiq",
+            "product": "Cloud Modernization & Managed Cloud Services",
+            "productCategory": "Cloud Services",
+            "primaryAngle": "Reduce Cloud Spend & Increase Cost Predictability ",
+            "secondaryAngle": "Cloud Governance, Security & Operational Control",
+            "targetRegion": "Benelux",
+            "painPoints": "Unpredictable monthly cloud bills and cost spikes\nLack of cost ownership across teams and accounts\nLow or inconsistent tagging preventing cost allocation\nNo chargeback/showback model for business units\nSavings Plans and Reserved Instances underutilised or misaligned\nEngineering optimises for speed, finance optimises for cost → friction\nToo many cloud accounts/subscriptions without clear governance\nCloud environment not aligned to security or compliance standards\nManual security controls and audit evidence collection\nIAM sprawl and unclear access ownership\nLanding zone and guardrails inconsistently implemented\nTool sprawl across cost, security, and monitoring platforms\nHigh operational load on CloudOps / SRE teams\nReactive firefighting instead of proactive optimisation\nLimited visibility into future cloud spend and forecasting\nCloud partner adds cost but not strategic guidance\nInternal team lacks time or expertise to mature the cloud operating model",
+            "targetPersonas": "decison maker or key influencer",
+            "targetTitles": "CTO\nVP Engineering\nDirector of IT\nHead of IT\nHead of Infrastructure\nHead of Cloud\nCloud Platform Lead\nDirector of Technology\nIT Operations Director\nInfrastructure Manager\nNetwork Operations Manager\nSRE Manager\nDevOps Manager\nCloud Architect\nLead Cloud Architect\nEnterprise Architect\nFinOps Lead\nCloud Cost Manager\nIT Finance Manager\nCISO\nHead of Information Security\nCloud Security Architect",
+            "targetVerticals": "",
+            "techFocus": "AWS"
+          },
+          "company": {
+            "name": "Nedcargo",
+            "website": "www.nedcargo.com",
+            "linkedin": ""
+          },
+          "companyResearch": {
+            "company_status": "Operating",
+            "acquiredBy": null,
+            "effectiveDate": null,
+            "stillOperatesIndependently": true,
+            "cloud_preference": {
+              "provider": "Other",
+              "confidence": 35
+            },
+            "summary": "Nedcargo is a Benelux-focused logistics service provider specializing in warehousing, distribution, and supply-chain services for food, beverages (including wines & spirits), retail, and international forwarding. Their operations include track & trace and inventory/stock management capabilities that typically depend on modern, integrated IT platforms—making them a relevant target for cloud modernization and managed cloud services. No public evidence found on their site indicating a specific hyperscaler (AWS/Azure/GCP), so cloud preference is unclear."
+          },
+          "qualify": true
+        },
+        "webhookUrl": "https://engagetech12.app.n8n.cloud/webhook/845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e9cede33a723de861755fc4c3b19745bba65cbc53a84a89eef946fc41c7f58e4"
+  }
+}
