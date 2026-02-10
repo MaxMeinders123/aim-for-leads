@@ -13,6 +13,7 @@ import { WEBHOOKS, COMPANY_STATUSES } from '@/lib/constants';
 import { callResearchProxy, buildCompanyResearchPayload, buildProspectResearchPayload, parseAIResponse, fetchUserIntegrations, getResolvedWebhookUrl } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const normalizeCompanyDomain = (website?: string, fallbackName?: string) => {
@@ -51,6 +52,7 @@ export default function Research() {
   const { isRunning, totalCompanies, companiesProgress } = researchProgress;
   const isProcessingRef = useRef(false);
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
+  const [retryingCompanyIds, setRetryingCompanyIds] = useState<Set<string>>(new Set());
   const [userWebhooks, setUserWebhooks] = useState<Partial<UserIntegrations>>({});
 
   // Load user webhook configuration
@@ -99,28 +101,32 @@ export default function Research() {
       if (!company || !user) return;
 
       setExpandedCompanies((prev) => new Set(prev).add(companyId));
+      setRetryingCompanyIds((prev) => new Set(prev).add(companyId));
 
-      if (stepToRetry === 'company') {
-        updateCompanyProgress(companyId, { step: 'company', error: undefined });
-        try {
-          const payload = buildCompanyResearchPayload(selectedCampaign, company, user.id);
-          const webhookUrl = getResolvedWebhookUrl('company_research', userWebhooks);
-          const data = await callResearchProxy(webhookUrl, payload);
-          const parsed = data ? (parseAIResponse(data) as CompanyResearchResult) : null;
-          updateCompanyProgress(companyId, { step: 'people', companyData: parsed || undefined });
-          toast.success(`Company research complete for ${company.name}`);
-        } catch (err: unknown) {
-          updateCompanyProgress(companyId, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
-          toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      try {
+        if (stepToRetry === 'company') {
+          updateCompanyProgress(companyId, { step: 'company', error: undefined });
+          try {
+            const payload = buildCompanyResearchPayload(selectedCampaign, company, user.id);
+            const webhookUrl = getResolvedWebhookUrl('company_research', userWebhooks);
+            const data = await callResearchProxy(webhookUrl, payload);
+            const parsed = data ? (parseAIResponse(data) as CompanyResearchResult) : null;
+            updateCompanyProgress(companyId, { step: 'people', companyData: parsed || undefined });
+            toast.success(`Company research complete for ${company.name}`);
+          } catch (err: unknown) {
+            logger.error('Retry company research failed', { companyId, err });
+            updateCompanyProgress(companyId, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
+            toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
+          return;
         }
-      }
 
-      if (stepToRetry === 'people') {
         const existing = companiesProgress.find((p) => p.companyId === companyId);
         if (!existing?.company_research_id) {
           toast.error('Missing company research ID. Retry company research first.');
           return;
         }
+
         updateCompanyProgress(companyId, { step: 'people', error: undefined });
         try {
           const payload = buildProspectResearchPayload(
@@ -133,8 +139,6 @@ export default function Research() {
           const webhookUrl = getResolvedWebhookUrl('people_research', userWebhooks);
           const data = await callResearchProxy(webhookUrl, payload);
 
-          // n8n uses backgroundMode on the AI node, so the webhook may respond
-          // before contacts are ready. Check if the response has actual contacts.
           const parsed = data ? (parseAIResponse(data) as PeopleResearchResult) : null;
           const hasContacts = parsed?.contacts && Array.isArray(parsed.contacts) && parsed.contacts.length > 0;
 
@@ -142,15 +146,20 @@ export default function Research() {
             updateCompanyProgress(companyId, { step: 'complete', peopleData: parsed || undefined });
             toast.success(`Prospect research complete for ${company.name}`);
           } else {
-            // No contacts in response - n8n is processing in the background.
-            // Results will arrive via realtime subscription on prospect_research table.
             updateCompanyProgress(companyId, { step: 'awaiting_callback' });
             toast.info(`Prospect research started for ${company.name}. Results will appear automatically.`);
           }
         } catch (err: unknown) {
+          logger.error('Retry prospect research failed', { companyId, err });
           updateCompanyProgress(companyId, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
           toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
+      } finally {
+        setRetryingCompanyIds((prev) => {
+          const next = new Set(prev);
+          next.delete(companyId);
+          return next;
+        });
       }
     },
     [companies, selectedCampaign, user, companiesProgress, updateCompanyProgress, userWebhooks],
@@ -241,6 +250,7 @@ export default function Research() {
         updateCompanyProgress(company.id, { step: 'people', companyData: parsed || undefined });
         setExpandedCompanies((prev) => new Set(prev).add(company.id));
       } catch (err: unknown) {
+        logger.error('Company research failed', { companyId: company.id, err });
         updateCompanyProgress(company.id, { step: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
         continue;
       }
@@ -400,6 +410,26 @@ export default function Research() {
     }
   };
 
+
+  const getElapsedLabel = (updatedAt?: string) => {
+    if (!updatedAt) return null;
+    const diffSec = Math.max(0, Math.floor((Date.now() - new Date(updatedAt).getTime()) / 1000));
+    if (diffSec < 10) return 'just now';
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const minutes = Math.floor(diffSec / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ago`;
+  };
+
+  const getFriendlyError = (error?: string) => {
+    if (!error) return '';
+    if (error.toLowerCase().includes('timeout')) {
+      return 'This is taking longer than expected. You can retry now or wait for callback updates.';
+    }
+    return error;
+  };
+
   const getCompanyStatusBadge = (data: CompanyResearchResult | undefined) => {
     if (!data?.company_status) return null;
     const colors: Record<string, string> = {
@@ -464,6 +494,8 @@ export default function Research() {
               const isBankrupt = cp.companyData?.company_status === COMPANY_STATUSES.BANKRUPT;
               const isAcquiredInactive =
                 cp.companyData?.company_status === COMPANY_STATUSES.ACQUIRED && cp.companyData?.acquiredBy;
+              const isRetrying = retryingCompanyIds.has(cp.companyId);
+              const elapsedLabel = getElapsedLabel(cp.updatedAt);
 
               return (
                 <div key={cp.companyId} className={cn('rounded-xl border-2 transition-all shadow-sm', getStatusColor(cp.step))}>
@@ -516,7 +548,10 @@ export default function Research() {
                             Acquired by {cp.companyData?.acquiredBy}
                           </p>
                         )}
-                        {cp.error && <p className="text-sm text-destructive mt-1">{cp.error}</p>}
+                        {isLoading && elapsedLabel && (
+                          <p className="text-xs text-muted-foreground mt-1">Updated {elapsedLabel}</p>
+                        )}
+                        {cp.error && <p className="text-sm text-destructive mt-1">{getFriendlyError(cp.error)}</p>}
                       </div>
                     </div>
                     <div className="shrink-0">
@@ -543,12 +578,12 @@ export default function Research() {
                         )}
                         {!isLoading && (
                           <>
-                            <Button variant="outline" size="sm" onClick={() => retryStep(cp.companyId, 'company')}>
+                            <Button variant="outline" size="sm" onClick={() => retryStep(cp.companyId, 'company')} disabled={isRetrying}>
                               <RotateCcw className="w-4 h-4 mr-2" />
                               Re-Research Company
                             </Button>
                             {cp.companyData && (
-                              <Button variant="outline" size="sm" onClick={() => retryStep(cp.companyId, 'people')}>
+                              <Button variant="outline" size="sm" onClick={() => retryStep(cp.companyId, 'people')} disabled={isRetrying}>
                                 <RotateCcw className="w-4 h-4 mr-2" />
                                 Re-Research Prospects
                               </Button>
@@ -564,9 +599,10 @@ export default function Research() {
                               e.stopPropagation();
                               retryStep(cp.companyId, 'people');
                             }}
+                            disabled={isRetrying}
                           >
                             <Upload className="w-4 h-4 mr-2" />
-                            Manually Trigger Prospect Research
+                            Retry Prospect Research
                           </Button>
                         )}
                       </div>

@@ -15,6 +15,7 @@ import {
   Users,
   Trash2,
   ChevronDown,
+  Info,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -25,6 +26,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   Collapsible,
   CollapsibleContent,
@@ -81,8 +83,6 @@ export default function Companies() {
     companies,
     setCompanies,
     toggleCompanySelection,
-    selectAllCompanies,
-    deselectAllCompanies,
     campaigns,
     setSelectedCampaign,
     selectedCampaign,
@@ -108,6 +108,7 @@ export default function Companies() {
   const [isAddingManual, setIsAddingManual] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [reResearchingId, setReResearchingId] = useState<string | null>(null);
+  const [showOnboardingGuide, setShowOnboardingGuide] = useState(false);
 
   // Set selected campaign from URL
   useEffect(() => {
@@ -116,6 +117,23 @@ export default function Companies() {
       if (campaign) setSelectedCampaign(campaign);
     }
   }, [campaignId, campaigns, setSelectedCampaign]);
+
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `afl_onboarding_seen_${user.id}`;
+    const alreadySeen = localStorage.getItem(key);
+    if (!alreadySeen) {
+      setShowOnboardingGuide(true);
+    }
+  }, [user?.id]);
+
+  const closeOnboardingGuide = () => {
+    if (user?.id) {
+      localStorage.setItem(`afl_onboarding_seen_${user.id}`, 'true');
+    }
+    setShowOnboardingGuide(false);
+  };
 
   const loadCompanies = useCallback(async () => {
     if (!campaignId) return;
@@ -310,6 +328,18 @@ export default function Companies() {
     navigate(`/research/${campaignId}`);
   };
 
+  const toggleCompanySelectionScoped = (companyId: string, scopedIds: Set<string>) => {
+    toggleCompanySelection(companyId);
+
+    const selectedAfterToggle = companies
+      .filter((c) => scopedIds.has(c.id))
+      .filter((c) => (c.id === companyId ? !c.selected : c.selected)).length;
+
+    if (selectedAfterToggle === 0) {
+      toast.info('No companies selected in this tab');
+    }
+  };
+
   const handleDeleteSelected = async () => {
     const selectedIds = pendingCompanies.filter(c => c.selected).map(c => c.id);
     if (selectedIds.length === 0) {
@@ -421,6 +451,8 @@ export default function Companies() {
   };
 
   const renderCompanyTable = (companyList: Company[]) => {
+    const scopedIds = new Set(companyList.map((c) => c.id));
+    const scopedSelectedCount = companyList.filter((c) => c.selected).length;
     if (isLoadingCompanies) {
       return (
         <div className="space-y-3">
@@ -450,14 +482,17 @@ export default function Companies() {
         {/* Select All */}
         <div className="flex items-center gap-3 px-4 py-3 bg-muted/50 border-b">
           <Checkbox
-            checked={companyList.every((c) => c.selected)}
+            checked={companyList.length > 0 && companyList.every((c) => c.selected)}
             onCheckedChange={(checked) => {
-              if (checked) selectAllCompanies();
-              else deselectAllCompanies();
+              setCompanies(
+                companies.map((company) =>
+                  scopedIds.has(company.id) ? { ...company, selected: !!checked } : company,
+                ),
+              );
             }}
           />
           <span className="text-sm font-medium text-muted-foreground flex-1">
-            {companyList.filter((c) => c.selected).length} of {companyList.length} selected
+            {scopedSelectedCount} of {companyList.length} selected
           </span>
           {companyList.some((c) => c.selected) && (
             <Button
@@ -482,7 +517,7 @@ export default function Companies() {
           {companyList.map((company) => (
             <div
               key={company.id}
-              onClick={() => toggleCompanySelection(company.id)}
+              onClick={() => toggleCompanySelectionScoped(company.id, scopedIds)}
               className={cn(
                 'flex items-center gap-4 px-4 py-3.5 cursor-pointer transition-colors',
                 company.selected ? 'bg-primary/5' : 'hover:bg-muted/30',
@@ -490,7 +525,8 @@ export default function Companies() {
             >
               <Checkbox
                 checked={company.selected}
-                onCheckedChange={() => toggleCompanySelection(company.id)}
+                onClick={(e) => e.stopPropagation()}
+                onCheckedChange={() => toggleCompanySelectionScoped(company.id, scopedIds)}
               />
 
               <div className="flex-1 min-w-0">
@@ -579,6 +615,16 @@ export default function Companies() {
             {/* Salesforce Import Tab */}
             <TabsContent value="salesforce" className="space-y-6">
               <div className="p-5 rounded-xl border bg-card space-y-4">
+                <div className="rounded-lg border border-blue-200/60 bg-blue-50/70 dark:bg-blue-950/20 dark:border-blue-900/50 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium text-blue-800 dark:text-blue-200">
+                    <Info className="w-4 h-4" />
+                    Quick reminder before import
+                  </div>
+                  <p className="mt-1 text-blue-900/90 dark:text-blue-100/90">
+                    In Salesforce, set Prospecting Status to <strong>Target Account</strong> first. Then copy the Campaign ID from the URL (starts with <strong>701...</strong>).
+                    This tool is in beta, so a manual check before sending to Clay is strongly recommended.
+                  </p>
+                </div>
                 <div>
                   <Label htmlFor="sfCampaignId" className="text-base font-medium">
                     Import from Salesforce
@@ -691,6 +737,27 @@ export default function Companies() {
           </div>
         )}
       </div>
+
+      <Dialog open={showOnboardingGuide} onOpenChange={(open) => !open && closeOnboardingGuide()}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Welcome — quick setup guide (beta)</DialogTitle>
+            <DialogDescription>
+              Honest note: this workflow is useful, but not perfect yet. Please do a quick manual review before sending prospects to Clay.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p><strong>1) In Salesforce:</strong> open your campaign and set Prospecting Status to <strong>Target Account</strong>.</p>
+            <p><strong>2) Copy Campaign ID:</strong> from the URL, use the ID that looks like <strong>701...</strong>.</p>
+            <p><strong>3) Import & Research:</strong> paste the ID here, import companies, select them, and press <strong>Start Research</strong>.</p>
+            <p><strong>4) Before Clay:</strong> we recommend a fast manual check. Clay feedback will show whether a prospect was added to Salesforce or flagged as duplicate.</p>
+            <div className="pt-2">
+              <Button onClick={closeOnboardingGuide} className="w-full">Got it, let’s start</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </AppLayout>
   );
 }

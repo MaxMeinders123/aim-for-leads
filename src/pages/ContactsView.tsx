@@ -39,6 +39,7 @@ import {
 import { CLAY_STATUSES } from '@/lib/constants';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface ProspectRow {
@@ -80,6 +81,7 @@ export default function ContactsView() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
+  const [sendingGroupIds, setSendingGroupIds] = useState<Set<string>>(new Set());
   const refreshTimeoutRef = useRef<number | null>(null);
 
   // Set campaign from URL
@@ -103,21 +105,41 @@ export default function ContactsView() {
       const crIds = research.map((r) => r.id);
       const prospects = await fetchProspectResearch(crIds);
 
-      // Group by company
-      const groups: CompanyGroup[] = research.map((cr) => {
+      // Group by normalized company domain to avoid duplicate company accordions
+      const groupsByDomain = new Map<string, CompanyGroup>();
+
+      research.forEach((cr) => {
         const companyProspects = prospects.filter((p) => p.company_research_id === cr.id);
-        return {
-          companyId: cr.id,
-          companyName: cr.company_name || cr.company_domain,
-          companyDomain: cr.company_domain,
-          prospects: companyProspects.map((p) => ({
+        if (companyProspects.length === 0) {
+          return;
+        }
+
+        const normalizedDomain = cr.company_domain.toLowerCase();
+        const existingGroup = groupsByDomain.get(normalizedDomain);
+
+        const normalizedProspects = companyProspects.map((p) => ({
             ...p,
             company_name: cr.company_name || cr.company_domain,
-          })),
-          sentCount: companyProspects.filter((p) => p.sent_to_clay).length,
-          unsentCount: companyProspects.filter((p) => !p.sent_to_clay).length,
-        };
+          }));
+
+        if (!existingGroup) {
+          groupsByDomain.set(normalizedDomain, {
+            companyId: cr.id,
+            companyName: cr.company_name || cr.company_domain,
+            companyDomain: cr.company_domain,
+            prospects: normalizedProspects,
+            sentCount: normalizedProspects.filter((p) => p.sent_to_clay).length,
+            unsentCount: normalizedProspects.filter((p) => !p.sent_to_clay).length,
+          });
+          return;
+        }
+
+        existingGroup.prospects = [...existingGroup.prospects, ...normalizedProspects];
+        existingGroup.sentCount = existingGroup.prospects.filter((p) => p.sent_to_clay).length;
+        existingGroup.unsentCount = existingGroup.prospects.filter((p) => !p.sent_to_clay).length;
       });
+
+      const groups = Array.from(groupsByDomain.values());
 
       // Only show companies with prospects
       setCompanyGroups(groups.filter((g) => g.prospects.length > 0));
@@ -126,7 +148,8 @@ export default function ContactsView() {
       if (groups.length > 0 && expandedCompanies.size === 0) {
         setExpandedCompanies(new Set([groups[0].companyId]));
       }
-    } catch {
+    } catch (err: unknown) {
+      logger.error('Failed to load contacts view data', err);
       toast.error('Failed to load contacts');
     } finally {
       setIsLoading(false);
@@ -180,12 +203,13 @@ export default function ContactsView() {
     try {
       const result = await sendProspectToClay(prospectId, user.id);
       if (result.sent > 0) {
-        toast.success('Prospect sent to Clay');
+        toast.success('Prospect sent to Clay. Waiting for Clay feedback...');
         await loadData();
       } else {
         toast.error(result.results?.[0]?.error || 'Failed to send to Clay');
       }
     } catch (err: unknown) {
+      logger.error('Failed to send single prospect to Clay', { prospectId, err });
       toast.error(err instanceof Error ? err.message : 'Failed to send to Clay');
     } finally {
       setSendingIds((prev) => {
@@ -201,14 +225,25 @@ export default function ContactsView() {
     const unsentIds = group.prospects.filter((p) => !p.sent_to_clay).map((p) => p.id);
     if (unsentIds.length === 0) return;
 
+    setSendingGroupIds((prev) => new Set(prev).add(group.companyId));
     unsentIds.forEach((id) => setSendingIds((prev) => new Set(prev).add(id)));
     try {
       const result = await sendBulkToClay(unsentIds, user.id);
-      toast.success(`Sent ${result.sent} of ${unsentIds.length} prospects to Clay`);
+      toast.success(`Sent ${result.sent} of ${unsentIds.length} prospects to Clay. Waiting for feedback...`);
       await loadData();
     } catch (err: unknown) {
+      logger.error('Failed to send group prospects to Clay', {
+        companyId: group.companyId,
+        unsentIds,
+        err,
+      });
       toast.error(err instanceof Error ? err.message : 'Failed to send to Clay');
     } finally {
+      setSendingGroupIds((prev) => {
+        const next = new Set(prev);
+        next.delete(group.companyId);
+        return next;
+      });
       unsentIds.forEach((id) =>
         setSendingIds((prev) => {
           const next = new Set(prev);
@@ -262,6 +297,23 @@ export default function ContactsView() {
     0,
   );
   const unsentCount = totalProspects - sentCount;
+
+
+  const getClayStatusMeta = (status: string | null, sentToClay: boolean) => {
+    if (status === CLAY_STATUSES.DUPLICATE) {
+      return { label: 'Duplicate in Salesforce', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' };
+    }
+    if (status === CLAY_STATUSES.INPUTTED) {
+      return { label: 'Added to Salesforce', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' };
+    }
+    if (status === CLAY_STATUSES.FAILED) {
+      return { label: 'Clay failed', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' };
+    }
+    if (status === CLAY_STATUSES.SENT || status === CLAY_STATUSES.PENDING || sentToClay) {
+      return { label: 'Waiting for Clay feedback', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' };
+    }
+    return { label: 'Not sent', className: 'bg-muted text-muted-foreground' };
+  };
 
   const getPriorityColor = (priority: string | null) => {
     switch (priority?.toLowerCase()) {
@@ -393,6 +445,7 @@ export default function ContactsView() {
             <div className="space-y-4 max-w-3xl">
               {filteredGroups.map((group) => {
                 const isExpanded = expandedCompanies.has(group.companyId);
+                const isGroupSending = sendingGroupIds.has(group.companyId);
                 return (
                   <div key={group.companyId} className="border rounded-lg overflow-hidden bg-card">
                     {/* Accordion header */}
@@ -442,9 +495,19 @@ export default function ContactsView() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleSendAllUnsent(group)}
+                              disabled={isGroupSending}
                             >
-                              <Send className="w-4 h-4 mr-2" />
-                              Send All Unsent to Clay
+                              {isGroupSending ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Sending...
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-4 h-4 mr-2" />
+                                  Send All Unsent to Clay
+                                </>
+                              )}
                             </Button>
                           </div>
                         )}
@@ -477,6 +540,9 @@ export default function ContactsView() {
                                           {prospect.priority}
                                         </Badge>
                                       )}
+                                      <Badge className={getClayStatusMeta(prospect.status, prospect.sent_to_clay).className}>
+                                        {getClayStatusMeta(prospect.status, prospect.sent_to_clay).label}
+                                      </Badge>
                                       {prospect.pitch_type && (
                                         <Badge variant="outline" className="text-xs">{prospect.pitch_type}</Badge>
                                       )}
@@ -552,7 +618,7 @@ export default function ContactsView() {
                                         ) : (
                                           <>
                                             <Send className="h-4 w-4 mr-1" />
-                                            Resend to Clay
+                                            Send to Clay Again
                                           </>
                                         )}
                                       </Button>

@@ -103,6 +103,7 @@ export interface CompanyResearchProgress {
   companyId: string;
   companyName: string;
   step: 'company' | 'people' | 'awaiting_callback' | 'clay' | 'complete' | 'error';
+  updatedAt?: string;
   companyData?: CompanyResearchResult;
   peopleData?: PeopleResearchResult;
   error?: string;
@@ -257,7 +258,7 @@ export const useAppStore = create<AppState>((set) => ({
     researchProgress: {
       ...state.researchProgress,
       companiesProgress: state.researchProgress.companiesProgress.map((cp) =>
-        cp.companyId === companyId ? { ...cp, ...update } : cp
+        cp.companyId === companyId ? { ...cp, ...update, updatedAt: new Date().toISOString() } : cp
       ),
     },
   })),
