@@ -118,9 +118,9 @@ export default function ContactsView() {
         const existingGroup = groupsByDomain.get(normalizedDomain);
 
         const normalizedProspects = companyProspects.map((p) => ({
-            ...p,
-            company_name: cr.company_name || cr.company_domain,
-          }));
+          ...p,
+          company_name: cr.company_name || cr.company_domain,
+        }));
 
         if (!existingGroup) {
           groupsByDomain.set(normalizedDomain, {
@@ -144,10 +144,13 @@ export default function ContactsView() {
       // Only show companies with prospects
       setCompanyGroups(groups.filter((g) => g.prospects.length > 0));
 
-      // Auto-expand first company
-      if (groups.length > 0 && expandedCompanies.size === 0) {
-        setExpandedCompanies(new Set([groups[0].companyId]));
-      }
+      // Auto-expand first company only when nothing is expanded yet
+      setExpandedCompanies((prev) => {
+        if (prev.size > 0 || groups.length === 0) {
+          return prev;
+        }
+        return new Set([groups[0].companyId]);
+      });
     } catch (err: unknown) {
       logger.error('Failed to load contacts view data', err);
       toast.error('Failed to load contacts');

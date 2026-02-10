@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -92,11 +92,7 @@ export default function Campaigns() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [step, setStep] = useState(0); // 0=basics, 1=identity, 2=audience, 3=strategy
 
-  useEffect(() => {
-    loadCampaigns();
-  }, []);
-
-  const loadCampaigns = async () => {
+  const loadCampaigns = useCallback(async () => {
     try {
       const data = await fetchCampaigns();
       setCampaigns(data);
@@ -105,7 +101,11 @@ export default function Campaigns() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [setCampaigns]);
+
+  useEffect(() => {
+    loadCampaigns();
+  }, [loadCampaigns]);
 
   const openCreate = () => {
     setDraft(initialDraft);
