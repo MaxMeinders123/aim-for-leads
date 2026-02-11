@@ -24,13 +24,15 @@ serve(async (req) => {
     // Expected payload: { personal_id, session_id, is_duplicate, salesforce_url, email, phone }
     const {
       personal_id,
-      session_id,    // matches the session_id sent in the outbound request
+      session_id,
       user_id,
-      is_duplicate,  // true = duplicate, false/undefined = inserted
-      salesforce_url, // URL to the contact in Salesforce
-      email,         // enriched email from Clay
-      phone,         // enriched phone from Clay
-      // Legacy fields for backwards compatibility
+      type,          // "New" | "Update" | "Fail" - record status from Clay
+      link,          // Merged CRM link (Salesforce URL)
+      email,         // Work Email from Clay
+      phone,         // Mobile Phone from Clay
+      // Legacy fields
+      is_duplicate,
+      salesforce_url,
       event,
       campaign_id,
       data
@@ -52,17 +54,25 @@ serve(async (req) => {
         );
       }
 
-      // Status: 'duplicate' if is_duplicate is true, otherwise 'inputted'
-      const newStatus = is_duplicate === true ? 'duplicate' : 'inputted';
+      // Map type to status: "New" → "new", "Update" → "update", "Fail" → "fail"
+      // Fall back to legacy is_duplicate logic if type is not provided
+      let newStatus: string;
+      if (type) {
+        newStatus = type.toLowerCase(); // "New" → "new", "Update" → "update", "Fail" → "fail"
+      } else {
+        newStatus = is_duplicate === true ? 'duplicate' : 'inputted';
+      }
 
-      console.log(`[clay-webhook] Updating prospect by ${matchColumn}=${matchId} to status: ${newStatus}, salesforce_url: ${salesforce_url}`);
+      const crmLink = link || salesforce_url;
+
+      console.log(`[clay-webhook] Updating prospect by ${matchColumn}=${matchId} to status: ${newStatus}, crm_link: ${crmLink}`);
 
       // Build update object — only set fields that Clay actually sent
       const updateFields: Record<string, any> = {
         status: newStatus,
         clay_response: body,
       };
-      if (salesforce_url) updateFields.salesforce_url = salesforce_url;
+      if (crmLink) updateFields.salesforce_url = crmLink;
       if (email) updateFields.email = email;
       if (phone) updateFields.phone = phone;
 
@@ -109,7 +119,7 @@ serve(async (req) => {
           success: true, 
           prospect_id: updatedProspect?.id,
           status: newStatus,
-          is_duplicate: is_duplicate || false
+          type: type || null
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
