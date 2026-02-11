@@ -304,22 +304,6 @@ serve(async (req) => {
           companyResearch: company_data,
           qualify: true,
         };
-
-        // Build prospect payload matching n8n webhook expectations
-        const prospectPayload = {
-          user_id,
-          campaign_id: campaign_id || null,
-          company_id: resolvedCompanyId,
-          company_research_id: insertedRecord.id,
-          company_domain,
-          salesforce_account_id: salesforce_account_id || null,
-          salesforce_campaign_id: resolvedSalesforceCampaignId,
-          campaign: campaignContext,
-          company: companyInfo,
-          companyResearch: company_data,
-          qualify: true,
-        };
-
         // Trigger prospect webhook. n8n may take minutes for AI processing,
         // so we can't fully await the response (edge function would timeout).
         // Instead, fire the request and wait briefly to ensure it transmits.
