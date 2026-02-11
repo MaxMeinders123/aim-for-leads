@@ -310,6 +310,24 @@ serve(async (req) => {
 
     console.log("[receive-prospect-results] Prospects saved:", insertedProspects.length);
 
+    // If 0 prospects were inserted, mark the company_research as error
+    if (insertedProspects.length === 0 && companyResearchId) {
+      const errorMsg = skippedDuplicates.length > 0
+        ? `All ${skippedDuplicates.length} prospects were duplicates`
+        : "Research returned 0 prospects";
+      
+      console.log(`[receive-prospect-results] No prospects inserted, marking company_research ${companyResearchId} as error: ${errorMsg}`);
+      
+      await supabase
+        .from("company_research")
+        .update({
+          status: "error",
+          error_message: errorMsg,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", companyResearchId);
+    }
+
     // Update legacy research_results table for backwards compatibility
     let legacyId = research_result_id;
     
