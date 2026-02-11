@@ -252,7 +252,34 @@ export default function ContactsView() {
 
   const handleConfirmWorksThere = async () => {
     const prospectId = linkedinCheckDialog.prospectId;
+    const dialogData = { ...linkedinCheckDialog };
     setLinkedinCheckDialog({ open: false, prospectId: '', prospectName: '', linkedinUrl: null });
+
+    // Log positive feedback for AI improvement
+    const prospect = companyGroups
+      .flatMap((g) => g.prospects.map((p) => ({ ...p, companyName: g.companyName, companyDomain: g.companyDomain })))
+      .find((p) => p.id === prospectId);
+
+    if (user?.id && prospect) {
+      supabase
+        .from('research_feedback')
+        .insert({
+          user_id: user.id,
+          prospect_research_id: prospectId,
+          company_research_id: prospect.company_research_id,
+          campaign_id: campaignId || null,
+          feedback_type: 'confirmed_working',
+          prospect_name: dialogData.prospectName,
+          prospect_title: prospect.job_title,
+          company_name: prospect.companyName,
+          company_domain: prospect.companyDomain,
+          linkedin_url: prospect.linkedin_url,
+        })
+        .then(({ error }) => {
+          if (error) logger.error('Failed to log positive feedback', error);
+        });
+    }
+
     await actualSendToClay(prospectId);
   };
 
