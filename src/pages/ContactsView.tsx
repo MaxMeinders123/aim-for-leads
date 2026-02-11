@@ -13,6 +13,9 @@ import {
   Check,
   Filter,
   Plus,
+  AlertTriangle,
+  UserX,
+  Undo2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -27,6 +30,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Alert,
+  AlertDescription,
+} from '@/components/ui/alert';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -84,6 +99,18 @@ export default function ContactsView() {
   const [sendingGroupIds, setSendingGroupIds] = useState<Set<string>>(new Set());
   const refreshTimeoutRef = useRef<number | null>(null);
 
+  // LinkedIn verification dialog state
+  const [linkedinCheckDialog, setLinkedinCheckDialog] = useState<{
+    open: boolean;
+    prospectId: string;
+    prospectName: string;
+    linkedinUrl: string | null;
+  }>({ open: false, prospectId: '', prospectName: '', linkedinUrl: null });
+
+  // Not working prospects section
+  const [showNotWorking, setShowNotWorking] = useState(false);
+  const [notWorkingProspects, setNotWorkingProspects] = useState<ProspectRow[]>([]);
+
   // Set campaign from URL
   useEffect(() => {
     if (campaignId && campaigns.length > 0) {
@@ -98,6 +125,7 @@ export default function ContactsView() {
       const research = await fetchCompanyResearch(campaignId, user.id);
       if (research.length === 0) {
         setCompanyGroups([]);
+        setNotWorkingProspects([]);
         setIsLoading(false);
         return;
       }
@@ -105,11 +133,22 @@ export default function ContactsView() {
       const crIds = research.map((r) => r.id);
       const prospects = await fetchProspectResearch(crIds);
 
+      // Separate not_working prospects
+      const working = prospects.filter((p) => p.status !== 'not_working');
+      const notWorking = prospects.filter((p) => p.status === 'not_working');
+
+      // Add company_name to not_working prospects
+      const notWorkingWithNames = notWorking.map((p) => {
+        const cr = research.find((r) => r.id === p.company_research_id);
+        return { ...p, company_name: cr?.company_name || cr?.company_domain || 'Unknown' };
+      });
+      setNotWorkingProspects(notWorkingWithNames);
+
       // Group by normalized company domain to avoid duplicate company accordions
       const groupsByDomain = new Map<string, CompanyGroup>();
 
       research.forEach((cr) => {
-        const companyProspects = prospects.filter((p) => p.company_research_id === cr.id);
+        const companyProspects = working.filter((p) => p.company_research_id === cr.id);
         if (companyProspects.length === 0) {
           return;
         }
@@ -200,7 +239,59 @@ export default function ContactsView() {
     });
   };
 
-  const handleSendToClay = async (prospectId: string) => {
+  // Open LinkedIn check dialog before sending to Clay
+  const promptLinkedinCheck = (prospect: ProspectRow) => {
+    const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Unknown';
+    setLinkedinCheckDialog({
+      open: true,
+      prospectId: prospect.id,
+      prospectName: fullName,
+      linkedinUrl: prospect.linkedin_url,
+    });
+  };
+
+  const handleConfirmWorksThere = async () => {
+    const prospectId = linkedinCheckDialog.prospectId;
+    setLinkedinCheckDialog({ open: false, prospectId: '', prospectName: '', linkedinUrl: null });
+    await actualSendToClay(prospectId);
+  };
+
+  const handleConfirmNotWorking = async () => {
+    const prospectId = linkedinCheckDialog.prospectId;
+    setLinkedinCheckDialog({ open: false, prospectId: '', prospectName: '', linkedinUrl: null });
+
+    try {
+      const { error } = await supabase
+        .from('prospect_research')
+        .update({ status: 'not_working' })
+        .eq('id', prospectId);
+
+      if (error) throw error;
+      toast.success('Prospect marked as no longer at company');
+      await loadData();
+    } catch (err: unknown) {
+      logger.error('Failed to mark prospect as not working', { prospectId, err });
+      toast.error('Failed to update prospect status');
+    }
+  };
+
+  const handleRestoreProspect = async (prospectId: string) => {
+    try {
+      const { error } = await supabase
+        .from('prospect_research')
+        .update({ status: 'pending' })
+        .eq('id', prospectId);
+
+      if (error) throw error;
+      toast.success('Prospect restored');
+      await loadData();
+    } catch (err: unknown) {
+      logger.error('Failed to restore prospect', { prospectId, err });
+      toast.error('Failed to restore prospect');
+    }
+  };
+
+  const actualSendToClay = async (prospectId: string) => {
     if (!user?.id) return;
     setSendingIds((prev) => new Set(prev).add(prospectId));
     try {
@@ -223,39 +314,8 @@ export default function ContactsView() {
     }
   };
 
-  const handleSendAllUnsent = async (group: CompanyGroup) => {
-    if (!user?.id) return;
-    const unsentIds = group.prospects.filter((p) => !p.sent_to_clay).map((p) => p.id);
-    if (unsentIds.length === 0) return;
-
-    setSendingGroupIds((prev) => new Set(prev).add(group.companyId));
-    unsentIds.forEach((id) => setSendingIds((prev) => new Set(prev).add(id)));
-    try {
-      const result = await sendBulkToClay(unsentIds, user.id);
-      toast.success(`Sent ${result.sent} of ${unsentIds.length} prospects to Clay. Waiting for feedback...`);
-      await loadData();
-    } catch (err: unknown) {
-      logger.error('Failed to send group prospects to Clay', {
-        companyId: group.companyId,
-        unsentIds,
-        err,
-      });
-      toast.error(err instanceof Error ? err.message : 'Failed to send to Clay');
-    } finally {
-      setSendingGroupIds((prev) => {
-        const next = new Set(prev);
-        next.delete(group.companyId);
-        return next;
-      });
-      unsentIds.forEach((id) =>
-        setSendingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        }),
-      );
-    }
-  };
+  // Send All is disabled — must check each individually
+  // (kept for reference but not used)
 
   // Filter
   const filteredGroups = companyGroups
@@ -349,6 +409,18 @@ export default function ContactsView() {
         />
 
         <div className="flex-1 overflow-auto p-6 space-y-6">
+          {/* LinkedIn Beta Notice */}
+          <Alert className="max-w-3xl border-yellow-300 bg-yellow-50 dark:bg-yellow-900/10 dark:border-yellow-700">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <AlertDescription className="text-sm">
+              <strong>LinkedIn verification (Beta):</strong> Our AI research finds prospects and their LinkedIn profiles, but this is still in beta. 
+              Please <strong>check each prospect's LinkedIn profile</strong> before sending to Clay to confirm they still work at the company. 
+              <span className="block mt-1 text-muted-foreground italic">
+                Sorry for the extra manual step — we're working on automating this! 🙏
+              </span>
+            </AlertDescription>
+          </Alert>
+
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4 max-w-2xl">
             <div className="bg-card border rounded-lg p-4">
@@ -429,7 +501,7 @@ export default function ContactsView() {
           )}
 
           {/* Empty state */}
-          {!isLoading && companyGroups.length === 0 && (
+          {!isLoading && companyGroups.length === 0 && notWorkingProspects.length === 0 && (
             <div className="text-center py-16 max-w-md mx-auto">
               <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No contacts yet</h3>
@@ -448,7 +520,6 @@ export default function ContactsView() {
             <div className="space-y-4 max-w-3xl">
               {filteredGroups.map((group) => {
                 const isExpanded = expandedCompanies.has(group.companyId);
-                const isGroupSending = sendingGroupIds.has(group.companyId);
                 return (
                   <div key={group.companyId} className="border rounded-lg overflow-hidden bg-card">
                     {/* Accordion header */}
@@ -487,31 +558,13 @@ export default function ContactsView() {
                     {/* Accordion content */}
                     {isExpanded && (
                       <div className="border-t">
-                        {/* Bulk send button */}
+                        {/* Info: must check each individually */}
                         {group.prospects.some((p) => !p.sent_to_clay) && (
-                          <div className="px-4 py-3 bg-muted/30 border-b flex items-center justify-between">
+                          <div className="px-4 py-3 bg-muted/30 border-b flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0" />
                             <span className="text-sm text-muted-foreground">
-                              {group.prospects.filter((p) => !p.sent_to_clay).length} prospect
-                              {group.prospects.filter((p) => !p.sent_to_clay).length !== 1 ? 's' : ''} ready to send
+                              Please check each prospect's LinkedIn individually before sending to Clay
                             </span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleSendAllUnsent(group)}
-                              disabled={isGroupSending}
-                            >
-                              {isGroupSending ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  Sending...
-                                </>
-                              ) : (
-                                <>
-                                  <Send className="w-4 h-4 mr-2" />
-                                  Send All Unsent to Clay
-                                </>
-                              )}
-                            </Button>
                           </div>
                         )}
 
@@ -590,13 +643,13 @@ export default function ContactsView() {
                                     )}
                                   </div>
 
-                                  {/* Send to Clay button */}
+                                  {/* Send to Clay button — triggers LinkedIn check dialog */}
                                   <div className="shrink-0">
                                     {!isSent ? (
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => handleSendToClay(prospect.id)}
+                                        onClick={() => promptLinkedinCheck(prospect)}
                                         disabled={isSending}
                                       >
                                         {isSending ? (
@@ -612,7 +665,7 @@ export default function ContactsView() {
                                       <Button
                                         size="sm"
                                         variant="ghost"
-                                        onClick={() => handleSendToClay(prospect.id)}
+                                        onClick={() => actualSendToClay(prospect.id)}
                                         disabled={isSending}
                                         className="text-muted-foreground"
                                       >
@@ -621,7 +674,7 @@ export default function ContactsView() {
                                         ) : (
                                           <>
                                             <Send className="h-4 w-4 mr-1" />
-                                            Send to Clay Again
+                                            Send Again
                                           </>
                                         )}
                                       </Button>
@@ -637,10 +690,129 @@ export default function ContactsView() {
                   </div>
                 );
               })}
+
+              {/* Not Working Prospects Section */}
+              {notWorkingProspects.length > 0 && (
+                <div className="border rounded-lg overflow-hidden bg-card border-orange-200 dark:border-orange-800">
+                  <button
+                    onClick={() => setShowNotWorking(!showNotWorking)}
+                    className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-orange-500/10">
+                        <UserX className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-orange-700 dark:text-orange-400">No Longer at Company</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {notWorkingProspects.length} prospect{notWorkingProspects.length !== 1 ? 's' : ''} marked as no longer working there
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-lg font-bold text-orange-600">{notWorkingProspects.length}</span>
+                      {showNotWorking ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    </div>
+                  </button>
+
+                  {showNotWorking && (
+                    <div className="border-t divide-y">
+                      {notWorkingProspects.map((prospect) => {
+                        const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Unknown';
+                        return (
+                          <div key={prospect.id} className="p-4 bg-orange-50/30 dark:bg-orange-900/5">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <span className="font-medium text-muted-foreground line-through">{fullName}</span>
+                                  <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                                    Not at company
+                                  </Badge>
+                                  {prospect.pitch_type && (
+                                    <Badge variant="outline" className="text-xs">{prospect.pitch_type}</Badge>
+                                  )}
+                                </div>
+                                {prospect.job_title && (
+                                  <p className="text-sm text-muted-foreground">{prospect.job_title}</p>
+                                )}
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Company: {prospect.company_name}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleRestoreProspect(prospect.id)}
+                                className="text-muted-foreground hover:text-foreground"
+                              >
+                                <Undo2 className="h-4 w-4 mr-1" />
+                                Restore
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* LinkedIn Check Confirmation Dialog */}
+      <Dialog
+        open={linkedinCheckDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setLinkedinCheckDialog({ open: false, prospectId: '', prospectName: '', linkedinUrl: null });
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-600" />
+              Have you checked their LinkedIn?
+            </DialogTitle>
+            <DialogDescription className="space-y-3">
+              <span className="block">
+                Before sending <strong>{linkedinCheckDialog.prospectName}</strong> to Clay, please verify they still work at the company.
+              </span>
+              {linkedinCheckDialog.linkedinUrl && (
+                <a
+                  href={linkedinCheckDialog.linkedinUrl.startsWith('http') ? linkedinCheckDialog.linkedinUrl : `https://${linkedinCheckDialog.linkedinUrl}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open LinkedIn Profile
+                </a>
+              )}
+              <span className="block text-xs text-muted-foreground italic">
+                Sorry for the extra step — LinkedIn verification is still in beta and we want to make sure you're sending the right people! 🙏
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              variant="destructive"
+              onClick={handleConfirmNotWorking}
+              className="flex-1"
+            >
+              <UserX className="h-4 w-4 mr-2" />
+              Doesn't work there
+            </Button>
+            <Button
+              onClick={handleConfirmWorksThere}
+              className="flex-1"
+            >
+              <Check className="h-4 w-4 mr-2" />
+              Works there — Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
