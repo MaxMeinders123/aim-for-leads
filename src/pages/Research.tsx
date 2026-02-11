@@ -524,16 +524,21 @@ export default function Research() {
                           {getCompanyStatusBadge(cp.companyData)}
                         </div>
                         {isLoading && (
-                          <p className="text-sm text-muted-foreground flex items-center gap-2">
-                            <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse" />
-                            {cp.step === 'company'
-                              ? 'Checking company status...'
-                              : cp.step === 'awaiting_callback'
-                                ? cp.companyData
-                                  ? 'Awaiting prospect research callback...'
-                                  : 'Awaiting company research callback...'
-                                : 'Finding prospects...'}
-                          </p>
+                          <div>
+                            <p className="text-sm text-muted-foreground flex items-center gap-2">
+                              <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse" />
+                              {cp.step === 'company'
+                                ? 'Checking company status...'
+                                : cp.step === 'awaiting_callback'
+                                  ? cp.companyData
+                                    ? 'Awaiting prospect research callback...'
+                                    : 'Awaiting company research callback...'
+                                  : 'Finding prospects...'}
+                            </p>
+                            <p className="text-xs text-muted-foreground/70 mt-1 ml-4">
+                              Expected wait time: ~5 minutes
+                            </p>
+                          </div>
                         )}
                         {cp.step === 'complete' && !isExpanded && cp.peopleData?.contacts && (
                           <p className="text-sm text-green-600 dark:text-green-400 font-medium">
