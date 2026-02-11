@@ -171,12 +171,24 @@ export default function Companies() {
       
       if (error) throw error;
       
-      // Set researched companies for display
-      setResearchedCompanies(data || []);
+      // Deduplicate by company_domain, keeping the most recent record per domain
+      const allRecords = data || [];
+      const domainMap = new Map<string, ResearchedCompany>();
+      // Sort by created_at desc so first seen = newest
+      const sorted = [...allRecords].sort((a, b) => b.id.localeCompare(a.id));
+      for (const record of sorted) {
+        const domain = record.company_domain.toLowerCase();
+        if (!domainMap.has(domain)) {
+          domainMap.set(domain, record);
+        }
+      }
+      const dedupedCompanies = Array.from(domainMap.values());
       
-      // Set domains for filtering (only completed ones)
-      const completedRecords = data?.filter(r => r.status === 'completed') || [];
-      const domains = new Set(completedRecords.map(r => r.company_domain.toLowerCase()));
+      // Set researched companies for display (deduplicated)
+      setResearchedCompanies(dedupedCompanies);
+      
+      // Set domains for filtering (any researched domain, not just completed)
+      const domains = new Set(dedupedCompanies.map(r => r.company_domain.toLowerCase()));
       setCompletedDomains(domains);
 
       // Load prospects for all researched companies
