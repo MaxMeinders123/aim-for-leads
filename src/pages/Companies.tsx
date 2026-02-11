@@ -220,7 +220,14 @@ export default function Companies() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'company_research', filter: `user_id=eq.${user.id}` },
         () => {
-          // Refresh the research data when new records arrive
+          loadCompletedResearch();
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'company_research', filter: `user_id=eq.${user.id}` },
+        () => {
+          // Refresh when research status changes (processing -> completed)
           loadCompletedResearch();
         },
       )
@@ -228,7 +235,6 @@ export default function Companies() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'prospect_research', filter: `user_id=eq.${user.id}` },
         () => {
-          // Refresh when new prospects arrive
           loadCompletedResearch();
         },
       )
