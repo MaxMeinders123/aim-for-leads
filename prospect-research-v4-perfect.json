@@ -1,0 +1,154 @@
+{
+  "name": "Prospect Research v4 - Perfect (NEDCARGO Ready)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prospect-research-v4",
+        "responseMode": "onReceived",
+        "responseData": "={\"status\": \"processing\", \"message\": \"Prospect research started\", \"user_id\": \"{{ $json.body.user_id }}\", \"company_domain\": \"{{ $json.body.company_domain }}", \"timestamp\": \"{{ $now }}\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [250, 300],
+      "id": "webhook-prospect-v4",
+      "name": "Prospect Research Webhook",
+      "webhookId": "prospect-research-v4-perfect"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.2,
+          "timeout": 300000
+        },
+        "promptType": "define",
+        "text": "=Find relevant decision-makers at {{ $json.body.company.name }} ({{ $json.body.company.website }})\n\nCampaign: {{ $json.body.campaign.campaignName }}\nProduct: {{ $json.body.campaign.product }}\nRegion: {{ $json.body.campaign.targetRegion }}\nTech focus: {{ $json.body.campaign.techFocus }}\nTarget titles: {{ $json.body.campaign.targetTitles }}\nTarget personas: {{ $json.body.campaign.targetPersonas }}\nPain points: {{ $json.body.campaign.painPoints }}\n\nCompany research context:\n{{ JSON.stringify($json.body.companyResearch) }}\n\nReturn JSON only with name, title, department, seniority, persona_match, why_relevant, identifying_details. Do NOT include LinkedIn URLs."
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [450, 300],
+      "id": "gpt-find-people-v4",
+      "name": "GPT-5.2: Find People",
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_API_KEY",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse GPT output and validate\nconst aiOutput = $json;\nlet parsed;\n\ntry {\n  const text = aiOutput.output || aiOutput.text || JSON.stringify(aiOutput);\n  try {\n    parsed = JSON.parse(text);\n  } catch {\n    const jsonMatch = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n    if (jsonMatch) {\n      parsed = JSON.parse(jsonMatch[1].trim());\n    } else {\n      const objMatch = text.match(/\\{[\\s\\S]*\\}/);\n      if (objMatch) parsed = JSON.parse(objMatch[0]);\n    }\n  }\n} catch (e) {\n  parsed = { status: 'error', people: [] };\n}\n\nconst people = parsed.people || [];\nconst webhook = $items('Prospect Research Webhook')[0]?.json?.body || {};\n\nreturn people.map(p => ({\n  json: {\n    full_name: p.full_name,\n    job_title: p.job_title,\n    department: p.department || '',\n    seniority: p.seniority,\n    persona_match: p.persona_match,\n    why_relevant: p.why_relevant,\n    identifying_details: p.identifying_details || '',\n    company_name: webhook.company?.name || '',\n    company_domain: (webhook.company?.website || '').replace(/^https?:\\/\\//, '').replace(/^www\\./, '').split('/')[0],\n    target_region: webhook.campaign?.targetRegion || '',\n    user_id: webhook.user_id,\n    campaign_id: webhook.campaign_id,\n    company_research_id: webhook.company_research_id,\n    company_id: webhook.company_id,\n    salesforce_account_id: webhook.salesforce_account_id,\n    salesforce_campaign_id: webhook.salesforce_campaign_id\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "id": "code-parse-gpt-v4",
+      "name": "Code: Parse GPT Output"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Employment validation - filter former employees\nconst person = $json;\nconst title = (person.job_title || '').toLowerCase();\nconst details = (person.identifying_details || '').toLowerCase();\n\nconst endedIndicators = ['former', 'ex-', 'ex ', 'previous', 'past', 'was', 'employment ended', 'left', 'departed', 'resigned', 'alumni', 'was at', 'used to work'];\n\nconst isFormer = endedIndicators.some(ind => title.includes(ind) || details.includes(ind));\n\nreturn [{\n  json: {\n    ...person,\n    employment_status: isFormer ? 'ended' : 'active',\n    warning: isFormer ? 'former_employee' : null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "id": "code-employment-check-v4",
+      "name": "Code: Employment Validation"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate search patterns for LinkedIn lookup\nconst person = $json;\nconst fullName = person.full_name || '';\nconst nameParts = fullName.split(' ');\nconst firstName = nameParts[0] || '';\nconst lastName = nameParts.slice(1).join(' ') || '';\n\nconst removeAccents = (str) => str.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');\n\nconst companyName = person.company_name || '';\nconst domainName = (person.company_domain || '').replace(/\\.(com|nl|de|org|be).*/, '');\n\nreturn [{\n  json: {\n    ...person,\n    search_patterns: [\n      `site:linkedin.com/in \"${fullName}\" \"${companyName}\"`,\n      `site:linkedin.com/in \"${removeAccents(fullName)}\" \"${companyName}\"`,\n      `site:linkedin.com/in \"${firstName} ${lastName}\" ${domainName}`,\n      `site:linkedin.com/in \"${firstName} ${lastName}\" ${person.target_region}`\n    ]\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300],
+      "id": "code-search-patterns-v4",
+      "name": "Code: Search Patterns"
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "engine", "value": "google" },
+            { "name": "q", "value": "={{ $json.search_patterns[0] }}" },
+            { "name": "num", "value": "10" },
+            { "name": "api_key", "value": "={{ $env.SERPAPI_KEY }}" }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1250, 300],
+      "id": "http-serpapi-v4",
+      "name": "HTTP: SerpAPI",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract LinkedIn URL from search results\nconst serp = $json;\nconst person = $items('Code: Employment Validation')[$itemIndex]?.json || {};\n\nconst organic = serp.organic_results || [];\nconst linkedinUrl = organic.find(r => r.link?.includes('linkedin.com/in/'))?.link || '';\n\n// Clean URL\nconst cleanUrl = linkedinUrl.split('?')[0].split('#')[0].replace(/\\/$/, '');\n\nreturn [{\n  json: {\n    user_id: person.user_id,\n    company_domain: person.company_domain,\n    company_research_id: person.company_research_id,\n    campaign_id: person.campaign_id,\n    company_id: person.company_id,\n    salesforce_account_id: person.salesforce_account_id,\n    salesforce_campaign_id: person.salesforce_campaign_id,\n    prospect: JSON.stringify({\n      status: 'completed',\n      full_name: person.full_name,\n      job_title: person.job_title,\n      linkedin_url: cleanUrl,\n      department: person.department,\n      seniority: person.seniority,\n      persona_match: person.persona_match,\n      why_relevant: person.why_relevant,\n      employment_status: person.employment_status,\n      cost_per_prospect: 0.15\n    }),\n    status: 'completed'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "id": "code-format-output-v4",
+      "name": "Code: Format Supabase Output"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "prospect_research_logs",
+        "columns": ["user_id", "company_domain", "company_research_id", "campaign_id", "prospect", "status"],
+        "data": [{"user_id": "={{ $json.user_id }}", "company_domain": "={{ $json.company_domain }}", "company_research_id": "={{ $json.company_research_id }}", "campaign_id": "={{ $json.campaign_id }}", "prospect": "={{ $json.prospect }}", "status": "completed"}]
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1650, 300],
+      "id": "postgres-log-v4",
+      "name": "Postgres: Log Results"
+    }
+  ],
+  "connections": {
+    "Prospect Research Webhook": {
+      "main": [[{"node": "GPT-5.2: Find People", "type": "main", "index": 0}]]
+    },
+    "GPT-5.2: Find People": {
+      "main": [[{"node": "Code: Parse GPT Output", "type": "main", "index": 0}]]
+    },
+    "Code: Parse GPT Output": {
+      "main": [[{"node": "Code: Employment Validation", "type": "main", "index": 0}]]
+    },
+    "Code: Employment Validation": {
+      "main": [[{"node": "Code: Search Patterns", "type": "main", "index": 0}]]
+    },
+    "Code: Search Patterns": {
+      "main": [[{"node": "HTTP: SerpAPI", "type": "main", "index": 0}]]
+    },
+    "HTTP: SerpAPI": {
+      "main": [[{"node": "Code: Format Supabase Output", "type": "main", "index": 0}]]
+    },
+    "Code: Format Supabase Output": {
+      "main": [[{"node": "Postgres: Log Results", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "active": false
+}
