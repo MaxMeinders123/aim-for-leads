@@ -416,19 +416,25 @@ export default function ContactsView() {
 
 
   const getClayStatusMeta = (status: string | null, sentToClay: boolean) => {
+    if (status === 'new') {
+      return { label: 'New in Salesforce', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300', tooltip: 'This contact has been added as a new record in Salesforce' };
+    }
+    if (status === 'update') {
+      return { label: 'Updated in Salesforce', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', tooltip: 'This contact already existed in Salesforce and has been updated' };
+    }
     if (status === CLAY_STATUSES.DUPLICATE) {
-      return { label: 'Duplicate in Salesforce', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' };
+      return { label: 'Duplicate in Salesforce', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300', tooltip: 'This contact was already in Salesforce' };
     }
     if (status === CLAY_STATUSES.INPUTTED) {
-      return { label: 'Added to Salesforce', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' };
+      return { label: 'Added to Salesforce', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300', tooltip: 'Successfully added to Salesforce' };
     }
-    if (status === CLAY_STATUSES.FAILED) {
-      return { label: 'Clay failed', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' };
+    if (status === CLAY_STATUSES.FAILED || status === 'fail') {
+      return { label: 'Clay failed', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', tooltip: 'Clay enrichment failed for this contact' };
     }
     if (status === CLAY_STATUSES.SENT || status === CLAY_STATUSES.PENDING || sentToClay) {
-      return { label: 'Waiting for Clay feedback', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' };
+      return { label: 'Waiting for Clay feedback', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', tooltip: 'Sent to Clay, waiting for enrichment results' };
     }
-    return { label: 'Not sent', className: 'bg-muted text-muted-foreground' };
+    return { label: 'Not sent', className: 'bg-muted text-muted-foreground', tooltip: 'Not yet sent to Clay for enrichment' };
   };
 
   const getPriorityColor = (priority: string | null) => {
@@ -649,11 +655,33 @@ export default function ContactsView() {
                                           {prospect.priority}
                                         </Badge>
                                       )}
-                                      <Badge className={getClayStatusMeta(prospect.status, prospect.sent_to_clay).className}>
-                                        {getClayStatusMeta(prospect.status, prospect.sent_to_clay).label}
-                                      </Badge>
+                                      {(() => {
+                                        const statusMeta = getClayStatusMeta(prospect.status, prospect.sent_to_clay);
+                                        return (
+                                          <Badge 
+                                            className={statusMeta.className} 
+                                            title={statusMeta.tooltip}
+                                          >
+                                            {statusMeta.label}
+                                          </Badge>
+                                        );
+                                      })()}
                                       {prospect.pitch_type && (
                                         <Badge variant="outline" className="text-xs">{prospect.pitch_type}</Badge>
+                                      )}
+                                      {/* Salesforce CRM Link */}
+                                      {prospect.salesforce_url && (
+                                        <a
+                                          href={prospect.salesforce_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          title="View contact in Salesforce"
+                                        >
+                                          <Badge variant="outline" className="gap-1 cursor-pointer hover:bg-primary/10 transition-colors">
+                                            <ExternalLink className="h-3 w-3" />
+                                            CRM
+                                          </Badge>
+                                        </a>
                                       )}
                                     </div>
 
