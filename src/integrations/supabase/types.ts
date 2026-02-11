@@ -379,6 +379,76 @@ export type Database = {
           },
         ]
       }
+      research_feedback: {
+        Row: {
+          campaign_id: string | null
+          company_domain: string | null
+          company_name: string | null
+          company_research_id: string | null
+          created_at: string
+          feedback_type: string
+          id: string
+          linkedin_url: string | null
+          notes: string | null
+          prospect_name: string | null
+          prospect_research_id: string | null
+          prospect_title: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          company_domain?: string | null
+          company_name?: string | null
+          company_research_id?: string | null
+          created_at?: string
+          feedback_type?: string
+          id?: string
+          linkedin_url?: string | null
+          notes?: string | null
+          prospect_name?: string | null
+          prospect_research_id?: string | null
+          prospect_title?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          company_domain?: string | null
+          company_name?: string | null
+          company_research_id?: string | null
+          created_at?: string
+          feedback_type?: string
+          id?: string
+          linkedin_url?: string | null
+          notes?: string | null
+          prospect_name?: string | null
+          prospect_research_id?: string | null
+          prospect_title?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_feedback_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_feedback_company_research_id_fkey"
+            columns: ["company_research_id"]
+            isOneToOne: false
+            referencedRelation: "company_research"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_feedback_prospect_research_id_fkey"
+            columns: ["prospect_research_id"]
+            isOneToOne: false
+            referencedRelation: "prospect_research"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       research_results: {
         Row: {
           clay_response: Json | null
