@@ -134,10 +134,8 @@ serve(async (req) => {
       }
     }
 
-    // If we still don't have salesforce_campaign_id but have company_research_id,
-    // try to find the linked company via salesforce_account_id or campaign_id
-    if (!resolvedSalesforceCampaignId && companyResearchId) {
-      // Get the company_research record to find the linked company
+    // If we have companyResearchId, look up campaign_id and salesforce IDs from the company_research record
+    if (companyResearchId) {
       const { data: companyResearch } = await supabase
         .from("company_research")
         .select("salesforce_account_id, campaign_id")
@@ -145,20 +143,33 @@ serve(async (req) => {
         .single();
 
       if (companyResearch) {
-        // Try to find matching company by salesforce_account_id and campaign_id
-        const { data: linkedCompany } = await supabase
-          .from("companies")
-          .select("id, salesforce_account_id, campaign_id, salesforce_campaign_id")
-          .eq("salesforce_account_id", companyResearch.salesforce_account_id)
-          .eq("campaign_id", companyResearch.campaign_id)
-          .maybeSingle();
+        if (!resolvedCampaignId && companyResearch.campaign_id) {
+          resolvedCampaignId = companyResearch.campaign_id;
+          console.log(`[receive-prospect-results] Resolved campaign_id from company_research: ${resolvedCampaignId}`);
+        }
+        if (!resolvedSalesforceAccountId && companyResearch.salesforce_account_id) {
+          resolvedSalesforceAccountId = companyResearch.salesforce_account_id;
+        }
 
-        if (linkedCompany) {
-          console.log(`[receive-prospect-results] Found linked company ${linkedCompany.id} via company_research lookup`);
-          if (!resolvedCompanyId) resolvedCompanyId = linkedCompany.id;
-          if (!resolvedSalesforceAccountId) resolvedSalesforceAccountId = linkedCompany.salesforce_account_id;
-          if (!resolvedCampaignId) resolvedCampaignId = linkedCompany.campaign_id;
-          if (!resolvedSalesforceCampaignId) resolvedSalesforceCampaignId = linkedCompany.salesforce_campaign_id;
+        // Try to find matching company by salesforce_account_id and campaign_id for salesforce_campaign_id
+        if (!resolvedSalesforceCampaignId && companyResearch.campaign_id) {
+          const query = supabase
+            .from("companies")
+            .select("id, salesforce_account_id, campaign_id, salesforce_campaign_id")
+            .eq("campaign_id", companyResearch.campaign_id);
+          
+          if (companyResearch.salesforce_account_id) {
+            query.eq("salesforce_account_id", companyResearch.salesforce_account_id);
+          }
+
+          const { data: linkedCompany } = await query.maybeSingle();
+
+          if (linkedCompany) {
+            console.log(`[receive-prospect-results] Found linked company ${linkedCompany.id} via company_research lookup`);
+            if (!resolvedCompanyId) resolvedCompanyId = linkedCompany.id;
+            if (!resolvedSalesforceAccountId) resolvedSalesforceAccountId = linkedCompany.salesforce_account_id;
+            if (!resolvedSalesforceCampaignId) resolvedSalesforceCampaignId = linkedCompany.salesforce_campaign_id;
+          }
         }
       }
     }
