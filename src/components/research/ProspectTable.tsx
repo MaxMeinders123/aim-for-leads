@@ -323,7 +323,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                       </a>
                     )}
 
-                    {/* Salesforce Link - show if inputted/duplicate */}
+                    {/* CRM Link - show Salesforce URL from Clay webhook */}
                     {prospect.salesforce_url && (
                       <a
                         href={prospect.salesforce_url}
@@ -331,9 +331,9 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                         rel="noopener noreferrer"
                         className="text-primary hover:text-primary/80"
                       >
-                        <Badge variant="outline" className="gap-1">
+                        <Badge variant="outline" className="gap-1 cursor-pointer">
                           <ExternalLink className="h-3 w-3" />
-                          SF
+                          CRM Link
                         </Badge>
                       </a>
                     )}
