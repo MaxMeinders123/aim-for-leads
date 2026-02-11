@@ -258,16 +258,42 @@ export default function ContactsView() {
 
   const handleConfirmNotWorking = async () => {
     const prospectId = linkedinCheckDialog.prospectId;
+    const dialogData = { ...linkedinCheckDialog };
     setLinkedinCheckDialog({ open: false, prospectId: '', prospectName: '', linkedinUrl: null });
 
     try {
+      // Find the prospect to get context for feedback
+      const prospect = companyGroups
+        .flatMap((g) => g.prospects.map((p) => ({ ...p, companyName: g.companyName, companyDomain: g.companyDomain })))
+        .find((p) => p.id === prospectId);
+
+      // Update status to not_working
       const { error } = await supabase
         .from('prospect_research')
         .update({ status: 'not_working' })
         .eq('id', prospectId);
 
       if (error) throw error;
-      toast.success('Prospect marked as no longer at company');
+
+      // Log feedback for AI improvement
+      if (user?.id && prospect) {
+        await supabase
+          .from('research_feedback')
+          .insert({
+            user_id: user.id,
+            prospect_research_id: prospectId,
+            company_research_id: prospect.company_research_id,
+            campaign_id: campaignId || null,
+            feedback_type: 'not_working',
+            prospect_name: dialogData.prospectName,
+            prospect_title: prospect.job_title,
+            company_name: prospect.companyName,
+            company_domain: prospect.companyDomain,
+            linkedin_url: prospect.linkedin_url,
+          });
+      }
+
+      toast.success('Prospect marked as no longer at company — feedback logged for AI improvement');
       await loadData();
     } catch (err: unknown) {
       logger.error('Failed to mark prospect as not working', { prospectId, err });
