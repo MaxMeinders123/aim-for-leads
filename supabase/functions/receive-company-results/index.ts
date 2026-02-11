@@ -125,15 +125,62 @@ serve(async (req) => {
     const cloudConfidence = company_data?.cloud_preference?.confidence || null;
     const evidenceUrls = company_data?.cloud_preference?.evidence_urls || null;
 
+    // Resolve campaign_id and company info BEFORE insert
+    // When n8n doesn't pass campaign_id, look up via salesforce_account_id or domain matching
+    let resolvedCampaignId = campaign_id || null;
+    let resolvedCompanyId: string | null = null;
+    let resolvedCompanyName = companyName;
+    let resolvedSalesforceCampaignId: string | null = body.salesforce_campaign_id || null;
+
+    // Strategy 1: Look up by salesforce_account_id (most reliable)
+    if (!resolvedCampaignId && salesforce_account_id) {
+      const { data: companyBySF } = await supabase
+        .from("companies")
+        .select("id, name, website, linkedin_url, campaign_id, salesforce_campaign_id")
+        .eq("salesforce_account_id", salesforce_account_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (companyBySF) {
+        resolvedCampaignId = companyBySF.campaign_id;
+        resolvedCompanyId = companyBySF.id;
+        resolvedSalesforceCampaignId = resolvedSalesforceCampaignId || companyBySF.salesforce_campaign_id;
+        if (!resolvedCompanyName) resolvedCompanyName = companyBySF.name;
+        console.log(`[receive-company-results] Resolved campaign via salesforce_account_id: ${resolvedCampaignId}`);
+      }
+    }
+
+    // Strategy 2: Look up by domain matching across all user's companies
+    if (!resolvedCampaignId && company_domain) {
+      const { data: userCompanies } = await supabase
+        .from("companies")
+        .select("id, name, website, linkedin_url, campaign_id, salesforce_account_id, salesforce_campaign_id")
+        .eq("user_id", user_id);
+
+      const matchingCompany = userCompanies?.find((c: { name: string; website?: string | null }) => {
+        const domain = c.website?.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "").toLowerCase() || "";
+        return domain === company_domain || c.name.toLowerCase().replace(/\s+/g, "") === company_domain;
+      });
+
+      if (matchingCompany) {
+        resolvedCampaignId = matchingCompany.campaign_id;
+        resolvedCompanyId = matchingCompany.id;
+        resolvedSalesforceCampaignId = resolvedSalesforceCampaignId || matchingCompany.salesforce_campaign_id;
+        if (!resolvedCompanyName) resolvedCompanyName = matchingCompany.name;
+        console.log(`[receive-company-results] Resolved campaign via domain match: ${resolvedCampaignId}`);
+      }
+    }
+
     // Insert into company_research table
     const { data: insertedRecord, error: insertError } = await supabase
       .from("company_research")
       .insert({
         user_id,
         company_domain,
-        campaign_id: campaign_id || null,
+        campaign_id: resolvedCampaignId,
         salesforce_account_id: salesforce_account_id || null,
-        company_name: companyName, // Will be updated below if null and company found in companies table
+        company_name: resolvedCompanyName,
         status: status === "rejected" ? "failed" : "completed",
         company_status: companyStatus,
         acquired_by: acquiredBy,
@@ -154,7 +201,7 @@ serve(async (req) => {
       );
     }
 
-    console.log("[receive-company-results] Company research saved");
+    console.log("[receive-company-results] Company research saved with campaign_id:", resolvedCampaignId);
 
     // Also update the legacy research_results table for backwards compatibility
     const { data: existingLegacy } = await supabase
@@ -179,10 +226,7 @@ serve(async (req) => {
         .eq("id", existingLegacy.id);
     }
 
-    // Auto-trigger prospect research for companies that are valid targets:
-    // - "Operating" companies
-    // - "Acquired" companies that still operate independently
-    // - "Renamed" companies (same business, different name)
+    // Auto-trigger prospect research for companies that are valid targets
     const stillOperates = company_data?.stillOperatesIndependently === true;
     const shouldTriggerProspects =
       companyStatus === "Operating" ||
@@ -191,7 +235,6 @@ serve(async (req) => {
 
     if (shouldTriggerProspects) {
       try {
-        // Get webhook URL from user_integrations (fall back to default)
         const DEFAULT_PROSPECT_WEBHOOK = "https://engagetech12.app.n8n.cloud/webhook/845a71b9-f7fd-4466-9599-3cb79e34d3a4";
 
         const { data: integrations } = await supabase
@@ -204,11 +247,11 @@ serve(async (req) => {
 
         // Look up campaign data to build the prospect payload
         let campaignContext: Record<string, unknown> = {};
-        if (campaign_id) {
+        if (resolvedCampaignId) {
           const { data: campaign } = await supabase
             .from("campaigns")
             .select("name, product, product_category, primary_angle, secondary_angle, target_region, pain_points, personas, job_titles, target_verticals, technical_focus")
-            .eq("id", campaign_id)
+            .eq("id", resolvedCampaignId)
             .maybeSingle();
 
           if (campaign) {
@@ -228,47 +271,39 @@ serve(async (req) => {
           }
         }
 
-        // Look up company info from companies table
-        let companyInfo: Record<string, string> = {
-          name: companyName || company_domain,
+        // Use already-resolved company info
+        const companyInfo: Record<string, string> = {
+          name: resolvedCompanyName || company_domain,
           website: company_domain,
           linkedin: "",
         };
 
-        let resolvedCompanyId: string | null = null;
-        let resolvedSalesforceCampaignId: string | null = body.salesforce_campaign_id || null;
-
-        if (campaign_id) {
-          const { data: companyRecords } = await supabase
+        // If we found a matching company earlier, use its linkedin
+        if (resolvedCompanyId && resolvedCampaignId) {
+          const { data: companyRecord } = await supabase
             .from("companies")
-            .select("id, name, website, linkedin_url, salesforce_account_id, salesforce_campaign_id")
-            .eq("campaign_id", campaign_id);
-
-          const matchingCompany = companyRecords?.find((c: { name: string; website?: string | null }) => {
-            const domain = c.website?.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "").toLowerCase() || "";
-            return domain === company_domain || c.name.toLowerCase().replace(/\s+/g, "") === company_domain;
-          });
-
-          if (matchingCompany) {
-            resolvedCompanyId = matchingCompany.id;
-            if (!resolvedSalesforceCampaignId) {
-              resolvedSalesforceCampaignId = matchingCompany.salesforce_campaign_id || null;
-            }
-            companyInfo = {
-              name: matchingCompany.name || company_domain,
-              website: matchingCompany.website || company_domain,
-              linkedin: matchingCompany.linkedin_url || "",
-            };
-
-            // Backfill company_name on the research record if it was null
-            if (!companyName && matchingCompany.name) {
-              await supabase
-                .from("company_research")
-                .update({ company_name: matchingCompany.name })
-                .eq("id", insertedRecord.id);
-            }
+            .select("linkedin_url")
+            .eq("id", resolvedCompanyId)
+            .maybeSingle();
+          if (companyRecord?.linkedin_url) {
+            companyInfo.linkedin = companyRecord.linkedin_url;
           }
         }
+
+        // Build prospect payload
+        const prospectPayload = {
+          user_id,
+          campaign_id: resolvedCampaignId,
+          company_id: resolvedCompanyId,
+          company_research_id: insertedRecord.id,
+          company_domain,
+          salesforce_account_id: salesforce_account_id || null,
+          salesforce_campaign_id: resolvedSalesforceCampaignId,
+          campaign: campaignContext,
+          company: companyInfo,
+          companyResearch: company_data,
+          qualify: true,
+        };
 
         // Build prospect payload matching n8n webhook expectations
         const prospectPayload = {
