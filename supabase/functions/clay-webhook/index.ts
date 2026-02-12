@@ -71,6 +71,8 @@ serve(async (req) => {
       const updateFields: Record<string, any> = {
         status: newStatus,
         clay_response: body,
+        sent_to_clay: true,
+        sent_to_clay_at: new Date().toISOString(),
       };
       if (crmLink) updateFields.salesforce_url = crmLink;
       if (email) updateFields.email = email;
