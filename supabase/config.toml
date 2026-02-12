@@ -5,3 +5,39 @@ verify_jwt = false
 
 [functions.import-salesforce-campaign]
 verify_jwt = false
+
+[functions.receive-company-results]
+verify_jwt = false
+
+[functions.receive-prospect-results]
+verify_jwt = false
+
+[functions.research-callback]
+verify_jwt = false
+
+[functions.research-proxy]
+verify_jwt = false
+
+[functions.save-campaign-companies]
+verify_jwt = false
+
+[functions.save-campaign-prospects]
+verify_jwt = false
+
+[functions.send-prospect-to-clay]
+verify_jwt = false
+
+[functions.clay-webhook]
+verify_jwt = false
+
+[functions.test-clay-payload]
+verify_jwt = false
+
+[functions.test-webhook]
+verify_jwt = false
+
+[functions.update-prospect-salesforce]
+verify_jwt = false
+
+[functions.update-prospect-status-from-salesforce]
+verify_jwt = false
