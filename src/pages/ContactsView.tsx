@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   UserX,
   Undo2,
+  Pencil,
+  X,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -97,6 +99,8 @@ export default function ContactsView() {
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [sendingGroupIds, setSendingGroupIds] = useState<Set<string>>(new Set());
+  const [editingLinkedinId, setEditingLinkedinId] = useState<string | null>(null);
+  const [linkedinInput, setLinkedinInput] = useState('');
   const refreshTimeoutRef = useRef<number | null>(null);
 
   // LinkedIn verification dialog state
@@ -437,6 +441,25 @@ export default function ContactsView() {
     return { label: 'Not sent', className: 'bg-muted text-muted-foreground', tooltip: 'Not yet sent to Clay for enrichment' };
   };
 
+  const handleSaveLinkedin = async (prospectId: string) => {
+    const url = linkedinInput.trim();
+    if (!url) { toast.error('Please enter a LinkedIn URL'); return; }
+    try {
+      const { error } = await supabase
+        .from('prospect_research')
+        .update({ linkedin_url: url })
+        .eq('id', prospectId);
+      if (error) throw error;
+      toast.success('LinkedIn URL saved');
+      setEditingLinkedinId(null);
+      setLinkedinInput('');
+      await loadData();
+    } catch (err: unknown) {
+      logger.error('Error saving LinkedIn URL', err);
+      toast.error('Failed to save LinkedIn URL');
+    }
+  };
+
   const getPriorityColor = (priority: string | null) => {
     switch (priority?.toLowerCase()) {
       case 'high': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
@@ -689,7 +712,7 @@ export default function ContactsView() {
                                       <p className="text-sm text-muted-foreground mb-1">{prospect.job_title}</p>
                                     )}
 
-                                    {prospect.linkedin_url && (
+                                    {prospect.linkedin_url ? (
                                       <a
                                         href={prospect.linkedin_url.startsWith('http') ? prospect.linkedin_url : `https://${prospect.linkedin_url}`}
                                         target="_blank"
@@ -699,6 +722,34 @@ export default function ContactsView() {
                                         <ExternalLink className="w-3 h-3" />
                                         {prospect.linkedin_url.replace(/^https?:\/\/(www\.)?/, '')}
                                       </a>
+                                    ) : editingLinkedinId === prospect.id ? (
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <Input
+                                          value={linkedinInput}
+                                          onChange={(e) => setLinkedinInput(e.target.value)}
+                                          placeholder="linkedin.com/in/..."
+                                          className="h-7 text-xs w-52"
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleSaveLinkedin(prospect.id);
+                                            if (e.key === 'Escape') { setEditingLinkedinId(null); setLinkedinInput(''); }
+                                          }}
+                                          autoFocus
+                                        />
+                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleSaveLinkedin(prospect.id)}>
+                                          <Check className="w-3 h-3" />
+                                        </Button>
+                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingLinkedinId(null); setLinkedinInput(''); }}>
+                                          <X className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1 mb-1 transition-colors"
+                                        onClick={() => { setEditingLinkedinId(prospect.id); setLinkedinInput(''); }}
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                        Add LinkedIn URL
+                                      </button>
                                     )}
 
                                     {/* Show enrichment data after Clay */}
