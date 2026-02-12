@@ -14,28 +14,11 @@ import { callResearchProxy, buildCompanyResearchPayload, buildProspectResearchPa
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import { normalizeCompanyDomain } from '@/lib/domainUtils';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { PageErrorBoundary } from '@/components/ErrorBoundary';
 
-const normalizeCompanyDomain = (website?: string, fallbackName?: string) => {
-  if (website) {
-    const trimmed = website.trim();
-
-    try {
-      const normalizedUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://') ? trimmed : `https://${trimmed}`;
-      return new URL(normalizedUrl).hostname.replace(/^www\./, '').toLowerCase();
-    } catch {
-      return trimmed
-        .replace(/^https?:\/\//, '')
-        .replace(/^www\./, '')
-        .split('/')[0]
-        .toLowerCase();
-    }
-  }
-
-  return fallbackName?.toLowerCase().replace(/\s+/g, '') || '';
-};
-
-export default function Research() {
+function ResearchPage() {
   const navigate = useNavigate();
   const { campaignId } = useParams<{ campaignId: string }>();
   const {
@@ -309,102 +292,92 @@ export default function Research() {
     }
   }, [isRunning, isAllDone]);
 
-  // Realtime: company_research inserts
-  useEffect(() => {
-    if (!user?.id) return;
+  // Realtime: company_research inserts (using new hook with proper cleanup)
+  useRealtimeSubscription('company-research-rt', {
+    table: 'company_research',
+    event: 'INSERT',
+    filter: user?.id ? `user_id=eq.${user.id}` : undefined,
+    callback: async (payload) => {
+      const rec = payload.new as { id: string; company_domain: string; raw_data: unknown; status: string; company_status: string | null };
+      const match = companies.find((c) => {
+        const domain = normalizeCompanyDomain(c.website, c.name);
+        return domain === rec.company_domain.toLowerCase();
+      });
+      if (match && rec.status === 'completed') {
+        const companyData = rec.raw_data as CompanyResearchResult | null;
+        updateCompanyProgress(match.id, {
+          step: 'people',
+          companyData: companyData || undefined,
+          company_research_id: rec.id,
+        });
+        toast.success(`Company research complete for ${match.name}`);
+        // Prospect research is now triggered server-side in receive-company-results.
+        // No frontend fallback to avoid duplicate triggers.
+      }
+    },
+    debounceMs: 300,
+  });
 
-    const companyChannel: RealtimeChannel = supabase
-      .channel('company-research-rt')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'company_research', filter: `user_id=eq.${user.id}` },
-        async (payload) => {
-          const rec = payload.new as { id: string; company_domain: string; raw_data: unknown; status: string; company_status: string | null };
-          const match = companies.find((c) => {
-            const domain = normalizeCompanyDomain(c.website, c.name);
-            return domain === rec.company_domain.toLowerCase();
+  // Realtime: prospect_research updates (using new hook with proper cleanup)
+  useRealtimeSubscription('prospect-research-rt', {
+    table: 'prospect_research',
+    event: '*',
+    filter: user?.id ? `user_id=eq.${user.id}` : undefined,
+    callback: async (payload) => {
+      const rec = (payload.new || payload.old) as { company_research_id?: string };
+      if (!rec?.company_research_id) return;
+
+      const { data: cr } = await supabase
+        .from('company_research')
+        .select('company_domain')
+        .eq('id', rec.company_research_id)
+        .single();
+      if (!cr) return;
+
+      const match = companies.find((c) => {
+        const domain = normalizeCompanyDomain(c.website, c.name);
+        return domain === cr.company_domain.toLowerCase();
+      });
+      if (!match) return;
+
+      const { data: prospects } = await supabase
+        .from('prospect_research')
+        .select('*')
+        .eq('company_research_id', rec.company_research_id)
+        .order('created_at', { ascending: false });
+
+      if (prospects && prospects.length > 0) {
+        const { contacts, failedCount, errorMessage } = summarizeProspectRows(prospects);
+        const summaryKey = JSON.stringify({ contacts: contacts.length, failedCount, errorMessage });
+        const previousSummary = lastProspectSummaryByCompanyResearchIdRef.current[rec.company_research_id];
+
+        if (previousSummary === summaryKey) {
+          return;
+        }
+
+        lastProspectSummaryByCompanyResearchIdRef.current[rec.company_research_id] = summaryKey;
+
+        if (contacts.length > 0) {
+          updateCompanyProgress(match.id, {
+            step: 'complete',
+            peopleData: { status: 'completed', company: match.name, contacts },
+            error: failedCount > 0 ? `${failedCount} prospect${failedCount > 1 ? 's' : ''} failed to process.` : undefined,
           });
-          if (match && rec.status === 'completed') {
-            const companyData = rec.raw_data as CompanyResearchResult | null;
-            updateCompanyProgress(match.id, {
-              step: 'people',
-              companyData: companyData || undefined,
-              company_research_id: rec.id,
-            });
-            toast.success(`Company research complete for ${match.name}`);
-            // Prospect research is now triggered server-side in receive-company-results.
-            // No frontend fallback to avoid duplicate triggers.
+          toast.success(`Prospect research complete for ${match.name}`);
+          if (failedCount > 0) {
+            toast.warning(`${failedCount} prospect${failedCount > 1 ? 's' : ''} failed to process for ${match.name}`);
           }
-        },
-      )
-      .subscribe();
+          return;
+        }
 
-    const prospectChannel: RealtimeChannel = supabase
-      .channel('prospect-research-rt')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'prospect_research', filter: `user_id=eq.${user.id}` },
-        async (payload) => {
-          const rec = (payload.new || payload.old) as { company_research_id?: string };
-          if (!rec?.company_research_id) return;
-
-          const { data: cr } = await supabase
-            .from('company_research')
-            .select('company_domain')
-            .eq('id', rec.company_research_id)
-            .single();
-          if (!cr) return;
-
-          const match = companies.find((c) => {
-            const domain = normalizeCompanyDomain(c.website, c.name);
-            return domain === cr.company_domain.toLowerCase();
-          });
-          if (!match) return;
-
-          const { data: prospects } = await supabase
-            .from('prospect_research')
-            .select('*')
-            .eq('company_research_id', rec.company_research_id)
-            .order('created_at', { ascending: false });
-
-          if (prospects && prospects.length > 0) {
-            const { contacts, failedCount, errorMessage } = summarizeProspectRows(prospects);
-            const summaryKey = JSON.stringify({ contacts: contacts.length, failedCount, errorMessage });
-            const previousSummary = lastProspectSummaryByCompanyResearchIdRef.current[rec.company_research_id];
-
-            if (previousSummary === summaryKey) {
-              return;
-            }
-
-            lastProspectSummaryByCompanyResearchIdRef.current[rec.company_research_id] = summaryKey;
-
-            if (contacts.length > 0) {
-              updateCompanyProgress(match.id, {
-                step: 'complete',
-                peopleData: { status: 'completed', company: match.name, contacts },
-                error: failedCount > 0 ? `${failedCount} prospect${failedCount > 1 ? 's' : ''} failed to process.` : undefined,
-              });
-              toast.success(`Prospect research complete for ${match.name}`);
-              if (failedCount > 0) {
-                toast.warning(`${failedCount} prospect${failedCount > 1 ? 's' : ''} failed to process for ${match.name}`);
-              }
-              return;
-            }
-
-            if (errorMessage) {
-              updateCompanyProgress(match.id, { step: 'error', error: errorMessage });
-              toast.error(`Prospect research failed for ${match.name}: ${errorMessage}`);
-            }
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(companyChannel);
-      supabase.removeChannel(prospectChannel);
-    };
-  }, [user?.id, companies, updateCompanyProgress, selectedCampaign, summarizeProspectRows]);
+        if (errorMessage) {
+          updateCompanyProgress(match.id, { step: 'error', error: errorMessage });
+          toast.error(`Prospect research failed for ${match.name}: ${errorMessage}`);
+        }
+      }
+    },
+    debounceMs: 300,
+  });
 
   // Load existing prospects on mount
   useEffect(() => {
@@ -841,5 +814,14 @@ export default function Research() {
         )}
       </div>
     </AppLayout>
+  );
+}
+
+// Wrap with error boundary to prevent crashes
+export default function Research() {
+  return (
+    <PageErrorBoundary>
+      <ResearchPage />
+    </PageErrorBoundary>
   );
 }

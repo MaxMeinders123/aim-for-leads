@@ -54,6 +54,7 @@ import { useAppStore, type CampaignDraft } from '@/stores/appStore';
 import { fetchCampaigns, createCampaign, updateCampaign, deleteCampaign } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { PageErrorBoundary } from '@/components/ErrorBoundary';
 
 const productCategories = [
   'IT Infrastructure',
@@ -79,7 +80,7 @@ const initialDraft: CampaignDraft = {
   pain_points: '',
 };
 
-export default function Campaigns() {
+function CampaignsPage() {
   const navigate = useNavigate();
   const { campaigns, setCampaigns, user } = useAppStore();
 
@@ -612,5 +613,14 @@ export default function Campaigns() {
         </AlertDialogContent>
       </AlertDialog>
     </AppLayout>
+  );
+}
+
+// Wrap with error boundary to prevent crashes
+export default function Campaigns() {
+  return (
+    <PageErrorBoundary>
+      <CampaignsPage />
+    </PageErrorBoundary>
   );
 }
