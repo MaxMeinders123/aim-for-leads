@@ -51,6 +51,7 @@ export default function Research() {
 
   const { isRunning, totalCompanies, companiesProgress } = researchProgress;
   const isProcessingRef = useRef(false);
+  const lastProspectSummaryByCompanyResearchIdRef = useRef<Record<string, string>>({});
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [retryingCompanyIds, setRetryingCompanyIds] = useState<Set<string>>(new Set());
 
@@ -80,6 +81,60 @@ export default function Research() {
       return next;
     });
   };
+
+  const summarizeProspectRows = useCallback((prospects: Array<{
+    first_name: string | null;
+    last_name: string | null;
+    job_title: string | null;
+    pitch_type: string | null;
+    linkedin_url: string | null;
+    priority: string | null;
+    priority_reason: string | null;
+    status: string | null;
+    raw_data: unknown;
+  }>) => {
+    const failedProspects = prospects.filter((p) => {
+      const status = p.status?.toLowerCase();
+      return status === 'fail' || status === 'failed';
+    });
+
+    const successfulProspects = prospects.filter((p) => {
+      const status = p.status?.toLowerCase();
+      return status !== 'fail' && status !== 'failed';
+    });
+
+    const contacts: ResearchContact[] = successfulProspects.map((p) => ({
+      first_name: p.first_name || '',
+      last_name: p.last_name || '',
+      job_title: p.job_title || '',
+      title: p.job_title || '',
+      pitch_type: p.pitch_type || '',
+      linkedin: p.linkedin_url || '',
+      priority: (p.priority || 'Medium') as 'High' | 'Medium' | 'Low',
+      priority_reason: p.priority_reason || '',
+    }));
+
+    const extractFailureReason = (rawData: unknown) => {
+      if (!rawData || typeof rawData !== 'object') return null;
+      const raw = rawData as Record<string, unknown>;
+      const candidates = ['error', 'error_message', 'message', 'reason'];
+      for (const key of candidates) {
+        const value = raw[key];
+        if (typeof value === 'string' && value.trim()) return value.trim();
+      }
+      return null;
+    };
+
+    const firstFailureReason = failedProspects
+      .map((p) => extractFailureReason(p.raw_data))
+      .find((reason): reason is string => Boolean(reason));
+
+    return {
+      contacts,
+      failedCount: failedProspects.length,
+      errorMessage: firstFailureReason || (failedProspects.length > 0 ? 'Prospect research failed. Please retry.' : null),
+    };
+  }, []);
 
   // Retry a step for a company
   const retryStep = useCallback(
@@ -288,9 +343,11 @@ export default function Research() {
       .channel('prospect-research-rt')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'prospect_research', filter: `user_id=eq.${user.id}` },
+        { event: '*', schema: 'public', table: 'prospect_research', filter: `user_id=eq.${user.id}` },
         async (payload) => {
-          const rec = payload.new as { company_research_id: string };
+          const rec = (payload.new || payload.old) as { company_research_id?: string };
+          if (!rec?.company_research_id) return;
+
           const { data: cr } = await supabase
             .from('company_research')
             .select('company_domain')
@@ -311,21 +368,33 @@ export default function Research() {
             .order('created_at', { ascending: false });
 
           if (prospects && prospects.length > 0) {
-            const contacts: ResearchContact[] = prospects.map((p) => ({
-              first_name: p.first_name || '',
-              last_name: p.last_name || '',
-              job_title: p.job_title || '',
-              title: p.job_title || '',
-              pitch_type: p.pitch_type || '',
-              linkedin: p.linkedin_url || '',
-              priority: (p.priority || 'Medium') as 'High' | 'Medium' | 'Low',
-              priority_reason: p.priority_reason || '',
-            }));
-            updateCompanyProgress(match.id, {
-              step: 'complete',
-              peopleData: { status: 'completed', company: match.name, contacts },
-            });
-            toast.success(`Prospect research complete for ${match.name}`);
+            const { contacts, failedCount, errorMessage } = summarizeProspectRows(prospects);
+            const summaryKey = JSON.stringify({ contacts: contacts.length, failedCount, errorMessage });
+            const previousSummary = lastProspectSummaryByCompanyResearchIdRef.current[rec.company_research_id];
+
+            if (previousSummary === summaryKey) {
+              return;
+            }
+
+            lastProspectSummaryByCompanyResearchIdRef.current[rec.company_research_id] = summaryKey;
+
+            if (contacts.length > 0) {
+              updateCompanyProgress(match.id, {
+                step: 'complete',
+                peopleData: { status: 'completed', company: match.name, contacts },
+                error: failedCount > 0 ? `${failedCount} prospect${failedCount > 1 ? 's' : ''} failed to process.` : undefined,
+              });
+              toast.success(`Prospect research complete for ${match.name}`);
+              if (failedCount > 0) {
+                toast.warning(`${failedCount} prospect${failedCount > 1 ? 's' : ''} failed to process for ${match.name}`);
+              }
+              return;
+            }
+
+            if (errorMessage) {
+              updateCompanyProgress(match.id, { step: 'error', error: errorMessage });
+              toast.error(`Prospect research failed for ${match.name}: ${errorMessage}`);
+            }
           }
         },
       )
@@ -335,7 +404,7 @@ export default function Research() {
       supabase.removeChannel(companyChannel);
       supabase.removeChannel(prospectChannel);
     };
-  }, [user?.id, companies, updateCompanyProgress, selectedCampaign]);
+  }, [user?.id, companies, updateCompanyProgress, selectedCampaign, summarizeProspectRows]);
 
   // Load existing prospects on mount
   useEffect(() => {
@@ -351,26 +420,26 @@ export default function Research() {
             .eq('company_research_id', progress.company_research_id)
             .order('created_at', { ascending: false });
           if (prospects?.length) {
-            const contacts: ResearchContact[] = prospects.map((p) => ({
-              first_name: p.first_name || '',
-              last_name: p.last_name || '',
-              job_title: p.job_title || '',
-              title: p.job_title || '',
-              pitch_type: p.pitch_type || '',
-              linkedin: p.linkedin_url || '',
-              priority: (p.priority || 'Medium') as 'High' | 'Medium' | 'Low',
-              priority_reason: p.priority_reason || '',
-            }));
-            updateCompanyProgress(progress.companyId, {
-              step: progress.step === 'people' ? 'complete' : progress.step,
-              peopleData: { status: 'completed', company: progress.companyName, contacts },
-            });
+            const { contacts, failedCount, errorMessage } = summarizeProspectRows(prospects);
+
+            if (contacts.length > 0) {
+              updateCompanyProgress(progress.companyId, {
+                step: progress.step === 'people' || progress.step === 'awaiting_callback' ? 'complete' : progress.step,
+                peopleData: { status: 'completed', company: progress.companyName, contacts },
+                error: failedCount > 0 ? `${failedCount} prospect${failedCount > 1 ? 's' : ''} failed to process.` : undefined,
+              });
+            } else if (errorMessage) {
+              updateCompanyProgress(progress.companyId, {
+                step: 'error',
+                error: errorMessage,
+              });
+            }
           }
         } catch { /* ignore */ }
       }
     };
     loadExisting();
-  }, [user?.id, updateCompanyProgress, companiesProgress]);
+  }, [user?.id, updateCompanyProgress, companiesProgress, summarizeProspectRows]);
 
   // Persist to localStorage
   useEffect(() => {
@@ -408,9 +477,16 @@ export default function Research() {
 
   const getFriendlyError = (error?: string) => {
     if (!error) return '';
-    if (error.toLowerCase().includes('timeout')) {
+
+    const normalized = error.toLowerCase();
+    if (normalized.includes('timeout')) {
       return 'This is taking longer than expected. You can retry now or wait for callback updates.';
     }
+
+    if (normalized.includes('salesforce') && (normalized.includes('duplicate') || normalized.includes('already exists'))) {
+      return 'Salesforce sync failed — this is likely a Salesforce duplicate record.';
+    }
+
     return error;
   };
 
@@ -540,7 +616,11 @@ export default function Research() {
                         {isLoading && elapsedLabel && (
                           <p className="text-xs text-muted-foreground mt-1">Updated {elapsedLabel}</p>
                         )}
-                        {cp.error && <p className="text-sm text-destructive mt-1">{getFriendlyError(cp.error)}</p>}
+                        {cp.error && (
+                          <p className={cn('text-sm mt-1', cp.step === 'complete' ? 'text-amber-600 dark:text-amber-400' : 'text-destructive')}>
+                            {getFriendlyError(cp.error)}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="shrink-0">

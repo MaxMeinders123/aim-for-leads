@@ -257,12 +257,19 @@ export function ResearchedCompanyCard({
                   onReResearch(company.id);
                 }}
                 disabled={isReResearching}
-                className="h-8"
+                className="h-8 gap-1"
+                title={isReResearching ? 'Re-research in progress' : 'Re-run company research'}
               >
                 {isReResearching ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Re-researching...
+                  </>
                 ) : (
-                  <RefreshCw className="w-4 h-4" />
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    Re-research
+                  </>
                 )}
               </Button>
             </div>
