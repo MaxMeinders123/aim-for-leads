@@ -101,14 +101,60 @@ serve(async (req) => {
         // Build the callback URL so Clay knows where to send results
         const callbackWebhook = `${supabaseUrl}/functions/v1/clay-webhook`;
 
-        // Build Clay payload - gets salesforce IDs from prospect or companies table
+        // Resolve salesforce IDs from prospect → companies table → company_research → domain match
+        let sfAccountId = prospect.salesforce_account_id || prospect.companies?.salesforce_account_id || null;
+        let sfCampaignId = prospect.salesforce_campaign_id || prospect.companies?.salesforce_campaign_id || null;
+
+        // Fallback: resolve from company_research if still missing
+        if ((!sfAccountId || !sfCampaignId) && prospect.company_research_id) {
+          const { data: cr } = await supabase
+            .from("company_research")
+            .select("salesforce_account_id, campaign_id, company_domain")
+            .eq("id", prospect.company_research_id)
+            .maybeSingle();
+
+          if (cr) {
+            if (!sfAccountId && cr.salesforce_account_id) sfAccountId = cr.salesforce_account_id;
+
+            // Try companies table by campaign + salesforce_account or domain
+            if (!sfCampaignId && cr.campaign_id) {
+              const query = supabase
+                .from("companies")
+                .select("salesforce_account_id, salesforce_campaign_id")
+                .eq("campaign_id", cr.campaign_id);
+
+              if (cr.salesforce_account_id) {
+                query.eq("salesforce_account_id", cr.salesforce_account_id);
+              }
+
+              const { data: comp } = await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
+              if (comp) {
+                if (!sfAccountId) sfAccountId = comp.salesforce_account_id;
+                if (!sfCampaignId) sfCampaignId = comp.salesforce_campaign_id;
+              }
+            }
+          }
+        }
+
+        // Require Salesforce IDs — Clay needs them to sync to CRM
+        if (!sfAccountId || !sfCampaignId) {
+          console.error(`[send-prospect-to-clay] Missing Salesforce IDs for prospect ${prospectId}: account=${sfAccountId}, campaign=${sfCampaignId}`);
+          results.push({ 
+            prospect_id: prospectId, 
+            success: false, 
+            error: `Missing Salesforce IDs (account: ${sfAccountId ? 'ok' : 'missing'}, campaign: ${sfCampaignId ? 'ok' : 'missing'}). This prospect may need to be linked to a Salesforce campaign first.`
+          });
+          continue;
+        }
+
+        // Build Clay payload
         const clayPayload = {
           personal_id: personalId,
           session_id: sessionId,
           user_id,
           linkedin_url: prospect.linkedin_url,
-          salesforce_account_id: prospect.salesforce_account_id || prospect.companies?.salesforce_account_id,
-          salesforce_campaign_id: prospect.salesforce_campaign_id || prospect.companies?.salesforce_campaign_id,
+          salesforce_account_id: sfAccountId,
+          salesforce_campaign_id: sfCampaignId,
           callback_webhook: callbackWebhook,
         };
 
