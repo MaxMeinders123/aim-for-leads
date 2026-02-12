@@ -211,18 +211,55 @@ serve(async (req) => {
       return { url: cleaned, validated: true };
     };
 
-    // Check for duplicate prospects (same name + company_research)
-    const existingProspects = companyResearchId ? await supabase
-      .from("prospect_research")
-      .select("first_name, last_name, linkedin_url")
-      .eq("company_research_id", companyResearchId)
-      .eq("user_id", user_id) : { data: [] };
+    // Check for duplicate prospects across ALL research runs for this company domain + user
+    // This prevents duplicates when re-researching the same company
+    let existingProspectsData: { first_name: string; last_name: string; linkedin_url: string | null }[] = [];
+
+    if (companyResearchId) {
+      // Find all company_research IDs for the same domain and user
+      const normalizedDomain = company_domain?.toLowerCase()?.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/.*$/, '') || '';
+      
+      if (normalizedDomain) {
+        const { data: allResearchIds } = await supabase
+          .from("company_research")
+          .select("id")
+          .eq("user_id", user_id)
+          .ilike("company_domain", `%${normalizedDomain}%`);
+
+        const crIds = (allResearchIds || []).map((r: { id: string }) => r.id);
+
+        if (crIds.length > 0) {
+          const { data: existingData } = await supabase
+            .from("prospect_research")
+            .select("first_name, last_name, linkedin_url")
+            .in("company_research_id", crIds)
+            .eq("user_id", user_id);
+
+          existingProspectsData = existingData || [];
+        }
+      } else {
+        // Fallback: check only current company_research_id
+        const { data: existingData } = await supabase
+          .from("prospect_research")
+          .select("first_name, last_name, linkedin_url")
+          .eq("company_research_id", companyResearchId)
+          .eq("user_id", user_id);
+
+        existingProspectsData = existingData || [];
+      }
+    }
 
     const existingNames = new Set(
-      (existingProspects.data || []).map(
-        (p: { first_name: string; last_name: string }) =>
-          `${(p.first_name || '').toLowerCase()}_${(p.last_name || '').toLowerCase()}`
+      existingProspectsData.map(
+        (p) => `${(p.first_name || '').toLowerCase()}_${(p.last_name || '').toLowerCase()}`
       )
+    );
+    
+    // Also track by LinkedIn URL to catch name variations
+    const existingLinkedins = new Set(
+      existingProspectsData
+        .filter((p) => p.linkedin_url)
+        .map((p) => (p.linkedin_url as string).toLowerCase().replace(/\/$/, ''))
     );
 
     // Extract linkedin stats if provided by n8n validation step
@@ -245,17 +282,24 @@ serve(async (req) => {
         return val.substring(0, maxLen).trim() || null;
       };
 
-      // Check for duplicates
+      // Check for duplicates by name OR LinkedIn URL
       const nameKey = `${(contact.first_name || '').toLowerCase()}_${(contact.last_name || '').toLowerCase()}`;
-      if (existingNames.has(nameKey)) {
-        console.log(`[receive-prospect-results] Skipping duplicate: ${contact.first_name} ${contact.last_name}`);
+      const linkedinCheck = validateLinkedInUrl(contact.linkedin || contact.linkedin_url);
+      const linkedinKey = linkedinCheck.url?.toLowerCase().replace(/\/$/, '') || '';
+
+      const isDuplicateName = existingNames.has(nameKey);
+      const isDuplicateLinkedin = linkedinKey && existingLinkedins.has(linkedinKey);
+
+      if (isDuplicateName || isDuplicateLinkedin) {
+        console.log(`[receive-prospect-results] Skipping duplicate: ${contact.first_name} ${contact.last_name} (name: ${isDuplicateName}, linkedin: ${isDuplicateLinkedin})`);
         skippedDuplicates.push(nameKey);
         continue;
       }
       existingNames.add(nameKey);
+      if (linkedinKey) existingLinkedins.add(linkedinKey);
 
-      // Validate LinkedIn URL
-      const linkedinResult = validateLinkedInUrl(contact.linkedin || contact.linkedin_url);
+      // Use the already-validated LinkedIn URL from the duplicate check above
+      const linkedinResult = linkedinCheck;
 
       // ALWAYS include salesforce_campaign_id and salesforce_account_id from the original request
       const prospectInsert: Record<string, any> = {
