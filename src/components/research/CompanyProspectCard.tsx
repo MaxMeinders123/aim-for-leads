@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, Building2, ExternalLink, Send, Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ChevronDown, ChevronUp, Building2, ExternalLink, Send, Loader2, Pencil, Check, X } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -41,6 +42,8 @@ interface CompanyProspectCardProps {
 export function CompanyProspectCard({ company, prospects, onProspectUpdated }: CompanyProspectCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
+  const [editingLinkedinId, setEditingLinkedinId] = useState<string | null>(null);
+  const [linkedinInput, setLinkedinInput] = useState('');
 
   const statusCounts = {
     pending: prospects.filter(p => p.status === 'pending' || !p.status).length,
@@ -74,6 +77,30 @@ export function CompanyProspectCard({ company, prospects, onProspectUpdated }: C
         next.delete(prospectId);
         return next;
       });
+    }
+  };
+
+  const handleSaveLinkedin = async (prospectId: string) => {
+    const url = linkedinInput.trim();
+    if (!url) {
+      toast.error('Please enter a LinkedIn URL');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('prospect_research')
+        .update({ linkedin_url: url })
+        .eq('id', prospectId);
+
+      if (error) throw error;
+      toast.success('LinkedIn URL saved');
+      setEditingLinkedinId(null);
+      setLinkedinInput('');
+      onProspectUpdated?.();
+    } catch (err: any) {
+      console.error('Error saving LinkedIn URL:', err);
+      toast.error('Failed to save LinkedIn URL');
     }
   };
 
@@ -196,8 +223,8 @@ export function CompanyProspectCard({ company, prospects, onProspectUpdated }: C
 
                       {/* Actions */}
                       <div className="flex items-center gap-2 shrink-0">
-                        {/* LinkedIn Link */}
-                        {prospect.linkedin_url && (
+                        {/* LinkedIn Link or Edit */}
+                        {prospect.linkedin_url ? (
                           <a
                             href={prospect.linkedin_url.startsWith('http') ? prospect.linkedin_url : `https://${prospect.linkedin_url}`}
                             target="_blank"
@@ -206,6 +233,36 @@ export function CompanyProspectCard({ company, prospects, onProspectUpdated }: C
                           >
                             <ExternalLink className="h-4 w-4" />
                           </a>
+                        ) : editingLinkedinId === prospect.id ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={linkedinInput}
+                              onChange={(e) => setLinkedinInput(e.target.value)}
+                              placeholder="linkedin.com/in/..."
+                              className="h-7 text-xs w-44"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveLinkedin(prospect.id);
+                                if (e.key === 'Escape') { setEditingLinkedinId(null); setLinkedinInput(''); }
+                              }}
+                              autoFocus
+                            />
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleSaveLinkedin(prospect.id)}>
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingLinkedinId(null); setLinkedinInput(''); }}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-xs text-muted-foreground gap-1"
+                            onClick={() => { setEditingLinkedinId(prospect.id); setLinkedinInput(''); }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                            Add LinkedIn
+                          </Button>
                         )}
 
                         {/* Salesforce Link - show if inputted/duplicate */}
