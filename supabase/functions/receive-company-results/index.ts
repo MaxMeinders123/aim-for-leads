@@ -235,7 +235,7 @@ serve(async (req) => {
 
     if (shouldTriggerProspects) {
       try {
-        const DEFAULT_PROSPECT_WEBHOOK = "https://engagetech12.app.n8n.cloud/webhook/845a71b9-f7fd-4466-9599-3cb79e34d3a4";
+        const prospectWebhookEnv = Deno.env.get("DEFAULT_PROSPECT_RESEARCH_WEBHOOK");
 
         const { data: integrations } = await supabase
           .from("user_integrations")
@@ -243,7 +243,12 @@ serve(async (req) => {
           .eq("user_id", user_id)
           .maybeSingle();
 
-        const prospectWebhookUrl = integrations?.people_research_webhook_url || DEFAULT_PROSPECT_WEBHOOK;
+        const prospectWebhookUrl = integrations?.people_research_webhook_url || prospectWebhookEnv;
+        
+        if (!prospectWebhookUrl) {
+          console.error("[receive-company-results] No prospect webhook URL configured");
+          throw new Error("No prospect webhook URL configured");
+        }
 
         // Look up campaign data to build the prospect payload
         let campaignContext: Record<string, unknown> = {};

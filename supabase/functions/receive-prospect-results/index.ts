@@ -138,7 +138,7 @@ serve(async (req) => {
     if (companyResearchId) {
       const { data: companyResearch } = await supabase
         .from("company_research")
-        .select("salesforce_account_id, campaign_id")
+        .select("salesforce_account_id, campaign_id, company_domain")
         .eq("id", companyResearchId)
         .single();
 
@@ -151,8 +151,8 @@ serve(async (req) => {
           resolvedSalesforceAccountId = companyResearch.salesforce_account_id;
         }
 
-        // Try to find matching company by salesforce_account_id and campaign_id for salesforce_campaign_id
-        if (!resolvedSalesforceCampaignId && companyResearch.campaign_id) {
+        // Try to find matching company by salesforce_account_id and campaign_id
+        if (companyResearch.campaign_id) {
           const query = supabase
             .from("companies")
             .select("id, salesforce_account_id, campaign_id, salesforce_campaign_id")
@@ -162,13 +162,35 @@ serve(async (req) => {
             query.eq("salesforce_account_id", companyResearch.salesforce_account_id);
           }
 
-          const { data: linkedCompany } = await query.maybeSingle();
+          const { data: linkedCompany } = await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
 
           if (linkedCompany) {
             console.log(`[receive-prospect-results] Found linked company ${linkedCompany.id} via company_research lookup`);
             if (!resolvedCompanyId) resolvedCompanyId = linkedCompany.id;
             if (!resolvedSalesforceAccountId) resolvedSalesforceAccountId = linkedCompany.salesforce_account_id;
             if (!resolvedSalesforceCampaignId) resolvedSalesforceCampaignId = linkedCompany.salesforce_campaign_id;
+          }
+        }
+
+        // Strategy 3: Domain-based lookup in companies table (for re-research scenarios)
+        if ((!resolvedCompanyId || !resolvedSalesforceCampaignId) && (companyResearch.company_domain || company_domain)) {
+          const domainToMatch = (companyResearch.company_domain || company_domain || '').toLowerCase();
+          const { data: userCompanies } = await supabase
+            .from("companies")
+            .select("id, salesforce_account_id, campaign_id, salesforce_campaign_id, website, name")
+            .eq("user_id", user_id);
+
+          const matchingCompany = userCompanies?.find((c: any) => {
+            const cDomain = (c.website || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
+            return cDomain === domainToMatch || c.name?.toLowerCase().replace(/\s+/g, '') === domainToMatch;
+          });
+
+          if (matchingCompany) {
+            console.log(`[receive-prospect-results] Found company ${matchingCompany.id} via domain match`);
+            if (!resolvedCompanyId) resolvedCompanyId = matchingCompany.id;
+            if (!resolvedSalesforceAccountId) resolvedSalesforceAccountId = matchingCompany.salesforce_account_id;
+            if (!resolvedCampaignId) resolvedCampaignId = matchingCompany.campaign_id;
+            if (!resolvedSalesforceCampaignId) resolvedSalesforceCampaignId = matchingCompany.salesforce_campaign_id;
           }
         }
       }
