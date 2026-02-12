@@ -76,14 +76,42 @@ Matches what `receive-prospect-results` edge function expects:
 1. **Webhook** - Receives prospect research request
 2. **Contact Search** - OpenAI GPT-5.2 finds prospects (may or may not have LinkedIn)
 3. **Format Result** - Parses OpenAI JSON response
-4. **Split Contacts** - Creates one item per contact with Serper query
-5. **Serper Search** - Searches Google for LinkedIn profiles
-6. **Merge** - Combines contact data with Serper results
-7. **Set LinkedIn** - Extracts best matching LinkedIn URL using scoring
-8. **Aggregate** - Rebuilds contacts array
-9. **Filter** - Keeps only contacts with valid LinkedIn URLs
-10. **IF Check** - Verifies at least one contact has LinkedIn
-11. **Callback** - Sends results to Supabase edge function
+4. **Serper LinkedIn Enrichment** - Sequential processing of all contacts:
+   - For each contact without LinkedIn
+   - Builds Serper query with name + title + company
+   - Calls Serper API
+   - Finds best matching LinkedIn URL using scoring system
+   - Processes sequentially to avoid merge issues
+5. **Filter** - Keeps only contacts with valid LinkedIn URLs
+6. **IF Check** - Verifies at least one contact has LinkedIn
+7. **Callback** - Sends results to Supabase edge function
+
+## Why Sequential Processing?
+
+**Previous approach (split/merge):**
+- Split 9 contacts into 9 items
+- Run 9 HTTP requests in parallel
+- Merge results by position
+- **Problem**: HTTP requests complete in different order, causing position mismatches
+- Result: Wrong LinkedIn URLs matched to wrong people
+
+**Example of the bug:**
+```
+Josephus de Wit (position 0) → Serper search completes 9th
+Jan Bosmans (position 8) → Serper search completes 1st
+Merge by position → Josephus gets Jan's LinkedIn URL ❌
+```
+
+**Current approach (sequential):**
+- Process all contacts in one Code node
+- For each contact: query → fetch → match → next contact
+- Maintains perfect order
+- **Benefit**: Correct LinkedIn URL always matches the right person ✓
+
+**Trade-offs:**
+- Sequential is slower (~300ms × 9 contacts = ~2.7s)
+- Parallel would be ~300ms total if it worked correctly
+- **But sequential is reliable** and 2.7s is still fast enough
 
 ## Configuration
 
