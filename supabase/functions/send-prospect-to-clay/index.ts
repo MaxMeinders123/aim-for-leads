@@ -42,17 +42,14 @@ serve(async (req) => {
       );
     }
 
-    // Default Clay webhook (can be overridden in user_integrations)
-    const DEFAULT_CLAY_WEBHOOK = "https://engagetech12.app.n8n.cloud/webhook/clay-enrichment";
-    
-    // Get Clay webhook URL from user_integrations for THIS user only (security fix)
+    // Resolve Clay webhook URL: user_integrations → env secret fallback
     const { data: integrationData } = await supabase
       .from("user_integrations")
       .select("clay_webhook_url")
       .eq("user_id", user_id)
       .maybeSingle();
 
-    const clayWebhookUrl = integrationData?.clay_webhook_url || DEFAULT_CLAY_WEBHOOK;
+    const clayWebhookUrl = integrationData?.clay_webhook_url || Deno.env.get("DEFAULT_CLAY_WEBHOOK");
     
     if (!clayWebhookUrl) {
       return new Response(

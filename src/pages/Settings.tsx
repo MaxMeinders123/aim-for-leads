@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAppStore } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
-import { WEBHOOKS } from '@/lib/constants';
+
 import { fetchUserIntegrations, updateUserIntegrations, testWebhook, testClayPayload } from '@/services/api';
 import { toast } from 'sonner';
 
@@ -28,25 +28,25 @@ const WEBHOOK_CONFIGS: WebhookConfig[] = [
     key: 'salesforce_import_webhook_url',
     label: 'Salesforce Campaign Import (n8n)',
     description: 'Fetches accounts from a Salesforce Campaign',
-    placeholder: WEBHOOKS.SALESFORCE_IMPORT,
+    placeholder: 'https://your-n8n.app.n8n.cloud/webhook/...',
   },
   {
     key: 'company_research_webhook_url',
     label: 'Company Research (n8n)',
     description: 'Validates company status (Operating/Acquired/Bankrupt)',
-    placeholder: WEBHOOKS.COMPANY_RESEARCH,
+    placeholder: 'https://your-n8n.app.n8n.cloud/webhook/...',
   },
   {
     key: 'people_research_webhook_url',
     label: 'Prospect Research (n8n)',
     description: 'Finds decision-makers at company',
-    placeholder: WEBHOOKS.PROSPECT_RESEARCH,
+    placeholder: 'https://your-n8n.app.n8n.cloud/webhook/...',
   },
   {
     key: 'clay_webhook_url',
     label: 'Clay Integration',
     description: 'Enriches prospects with email/phone',
-    placeholder: 'https://clay.com/your-webhook-url',
+    placeholder: 'https://your-clay-webhook-url.com/...',
   },
 ];
 
@@ -294,7 +294,7 @@ export default function Settings() {
               )}
 
               <p className="text-xs text-muted-foreground">
-                Leave empty to use default URLs from <code className="bg-muted px-1 py-0.5 rounded">src/lib/constants.ts</code>
+                Leave empty to use default webhook URLs configured by your admin.
               </p>
 
               {/* Clay Payload Test */}
