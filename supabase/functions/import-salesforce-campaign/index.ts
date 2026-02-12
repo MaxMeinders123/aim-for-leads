@@ -30,20 +30,18 @@ serve(async (req) => {
       );
     }
 
-    // Use webhook URL from request body (hardcoded on frontend) or fall back to user_integrations
-    let webhookUrl = body.webhook_url;
-    if (!webhookUrl) {
-      const { data: integrationData } = await supabase
-        .from("user_integrations")
-        .select("salesforce_import_webhook_url")
-        .eq("user_id", user_id)
-        .maybeSingle();
-      webhookUrl = integrationData?.salesforce_import_webhook_url;
-    }
+    // Resolve webhook URL server-side: user_integrations → env secret fallback
+    const { data: integrationData } = await supabase
+      .from("user_integrations")
+      .select("salesforce_import_webhook_url")
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    const webhookUrl = integrationData?.salesforce_import_webhook_url || Deno.env.get("DEFAULT_SALESFORCE_IMPORT_WEBHOOK");
 
     if (!webhookUrl) {
       return new Response(
-        JSON.stringify({ error: "Salesforce import webhook URL not configured." }),
+        JSON.stringify({ error: "Salesforce import webhook URL not configured. Set it in Settings or contact admin." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

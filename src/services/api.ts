@@ -1,5 +1,4 @@
 import { supabase } from '@/integrations/supabase/client';
-import { WEBHOOKS } from '@/lib/constants';
 import type { Campaign, Company, UserIntegrations } from '@/stores/appStore';
 
 // =============================================================================
@@ -115,15 +114,12 @@ export async function importSalesforceCompanies(
   userId: string,
   campaignId: string,
   salesforceCampaignId: string,
-  customWebhookUrl?: string,
 ) {
-  const webhookUrl = customWebhookUrl || WEBHOOKS.SALESFORCE_IMPORT;
   const { data, error } = await supabase.functions.invoke('import-salesforce-campaign', {
     body: {
       salesforce_campaign_id: salesforceCampaignId,
       campaign_id: campaignId,
       user_id: userId,
-      webhook_url: webhookUrl,
     },
   });
   if (error) throw error;
@@ -176,36 +172,11 @@ export async function testWebhook(url: string): Promise<{ success: boolean; mess
   return { success: data?.success ?? false, message: data?.message ?? 'Unknown result' };
 }
 
-export function getResolvedWebhookUrl(
-  webhookType: 'company_research' | 'people_research' | 'salesforce_import' | 'clay',
-  integrations?: Partial<UserIntegrations>,
-): string {
-  if (!integrations) {
-    switch (webhookType) {
-      case 'company_research': return WEBHOOKS.COMPANY_RESEARCH;
-      case 'people_research': return WEBHOOKS.PROSPECT_RESEARCH;
-      case 'salesforce_import': return WEBHOOKS.SALESFORCE_IMPORT;
-      case 'clay': return WEBHOOKS.CLAY;
-    }
-  }
-
-  switch (webhookType) {
-    case 'company_research':
-      return integrations.company_research_webhook_url || WEBHOOKS.COMPANY_RESEARCH;
-    case 'people_research':
-      return integrations.people_research_webhook_url || WEBHOOKS.PROSPECT_RESEARCH;
-    case 'salesforce_import':
-      return integrations.salesforce_import_webhook_url || WEBHOOKS.SALESFORCE_IMPORT;
-    case 'clay':
-      return integrations.clay_webhook_url || WEBHOOKS.CLAY;
-  }
-}
-
 // =============================================================================
-// Research proxy (calls n8n via Supabase edge function to avoid CORS)
+// Research proxy (calls n8n via edge function — webhook resolved server-side)
 // =============================================================================
 
-export async function callResearchProxy(webhookUrl: string, payload: unknown) {
+export async function callResearchProxy(webhookType: string, payload: unknown) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 1200000); // 20 min
 
@@ -220,7 +191,7 @@ export async function callResearchProxy(webhookUrl: string, payload: unknown) {
           ...getAuthHeaders(),
           Authorization: `Bearer ${accessToken ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ webhookUrl, payload }),
+        body: JSON.stringify({ webhook_type: webhookType, payload }),
         signal: controller.signal,
       },
     );
@@ -321,7 +292,6 @@ export function parseAIResponse(responseData: unknown): unknown {
   try {
     const data = responseData as Record<string, unknown>;
 
-    // Nested output_text content from n8n
     if (
       data?.output &&
       Array.isArray(data.output) &&
@@ -340,7 +310,6 @@ export function parseAIResponse(responseData: unknown): unknown {
       }
     }
 
-    // Array response
     if (Array.isArray(responseData) && responseData.length > 0) {
       if ((responseData[0] as Record<string, unknown>)?.output) {
         return parseAIResponse(responseData[0]);
@@ -348,12 +317,10 @@ export function parseAIResponse(responseData: unknown): unknown {
       return parseAIResponse(responseData[0]);
     }
 
-    // Direct JSON with expected fields
     if (typeof data === 'object' && data !== null) {
       if (data.status || data.company_status || data.contacts) return data;
     }
 
-    // Raw JSON string
     if (typeof responseData === 'string') {
       const jsonMatch = (responseData as string).match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) return JSON.parse(jsonMatch[1].trim());

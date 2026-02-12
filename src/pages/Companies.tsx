@@ -42,8 +42,6 @@ import {
   deleteMultipleCompanies,
   callResearchProxy,
   buildCompanyResearchPayload,
-  getResolvedWebhookUrl,
-  fetchUserIntegrations,
 } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -411,10 +409,7 @@ export default function Companies() {
     setReResearchingId(companyResearchId);
     
     try {
-      // Get user integrations for webhook URL
-      const integrations = await fetchUserIntegrations(user.id);
-      const webhookUrl = getResolvedWebhookUrl('company_research', integrations);
-      
+      // Webhook URL resolved server-side by research-proxy
       // Build a minimal company object for the payload
       const companyForPayload: Company = {
         id: companyResearchId,
@@ -426,7 +421,7 @@ export default function Companies() {
       const payload = buildCompanyResearchPayload(selectedCampaign, companyForPayload, user.id);
       
       // Trigger the research
-      await callResearchProxy(webhookUrl, payload);
+      await callResearchProxy('company_research', payload);
       
       toast.success(`Re-research started for ${researchedCompany.company_name || researchedCompany.company_domain}`);
       
