@@ -57,7 +57,10 @@ import { CLAY_STATUSES } from '@/lib/constants';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import { validateLinkedInUrl } from '@/lib/validation';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { useRateLimit } from '@/hooks/useThrottle';
+import { PageErrorBoundary } from '@/components/ErrorBoundary';
 
 interface ProspectRow {
   id: string;
@@ -87,7 +90,7 @@ interface CompanyGroup {
   unsentCount: number;
 }
 
-export default function ContactsView() {
+function ContactsViewPage() {
   const navigate = useNavigate();
   const { campaignId } = useParams<{ campaignId: string }>();
   const { user, campaigns, selectedCampaign, setSelectedCampaign } = useAppStore();
@@ -206,33 +209,14 @@ export default function ContactsView() {
     loadData();
   }, [loadData]);
 
-  // Realtime subscriptions
-  useEffect(() => {
-    if (!user?.id) return;
-    const channel: RealtimeChannel = supabase
-      .channel('contacts-view-rt')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'prospect_research', filter: `user_id=eq.${user.id}` },
-        () => {
-          if (refreshTimeoutRef.current) {
-            window.clearTimeout(refreshTimeoutRef.current);
-          }
-          refreshTimeoutRef.current = window.setTimeout(() => {
-            loadData();
-            refreshTimeoutRef.current = null;
-          }, 300);
-        },
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-      if (refreshTimeoutRef.current) {
-        window.clearTimeout(refreshTimeoutRef.current);
-        refreshTimeoutRef.current = null;
-      }
-    };
-  }, [user?.id, loadData]);
+  // Realtime subscription with proper cleanup (fixes memory leak)
+  useRealtimeSubscription('contacts-view-rt', {
+    table: 'prospect_research',
+    event: '*',
+    filter: user?.id ? `user_id=eq.${user.id}` : undefined,
+    callback: () => loadData(),
+    debounceMs: 300,
+  });
 
   const toggleCompany = (id: string) => {
     setExpandedCompanies((prev) => {
@@ -946,5 +930,14 @@ export default function ContactsView() {
         </DialogContent>
       </Dialog>
     </AppLayout>
+  );
+}
+
+// Wrap with error boundary to prevent crashes
+export default function ContactsView() {
+  return (
+    <PageErrorBoundary>
+      <ContactsViewPage />
+    </PageErrorBoundary>
   );
 }

@@ -35,16 +35,20 @@ import {
 import { ResearchedCompanyCard } from '@/components/research/ResearchedCompanyCard';
 import { useAppStore, type Company, type CompanyResearchProgress } from '@/stores/appStore';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  fetchCompanies, 
-  addManualCompany, 
-  importSalesforceCompanies, 
+import {
+  fetchCompanies,
+  addManualCompany,
+  importSalesforceCompanies,
   deleteMultipleCompanies,
   callResearchProxy,
   buildCompanyResearchPayload,
 } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { normalizeCompanyDomain } from '@/lib/domainUtils';
+import { companySchema, sanitizeInput, sanitizeUrl } from '@/lib/validation';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { PageErrorBoundary } from '@/components/ErrorBoundary';
 
 interface ResearchedCompany {
   id: string;
@@ -74,7 +78,7 @@ interface Prospect {
   sent_to_clay: boolean;
 }
 
-export default function Companies() {
+function CompaniesPage() {
   const navigate = useNavigate();
   const { campaignId } = useParams<{ campaignId: string }>();
   const {
@@ -220,40 +224,30 @@ export default function Companies() {
     loadCompletedResearch();
   }, [campaignId, loadCompanies, loadCompletedResearch]);
 
-  // Realtime subscription for company_research updates
-  useEffect(() => {
-    if (!user?.id || !campaignId) return;
+  // Realtime subscription for company_research updates (using new hook with proper cleanup)
+  useRealtimeSubscription('companies-research-insert', {
+    table: 'company_research',
+    event: 'INSERT',
+    filter: user?.id ? `user_id=eq.${user.id}` : undefined,
+    callback: () => loadCompletedResearch(),
+    debounceMs: 500,
+  });
 
-    const channel = supabase
-      .channel('companies-research-updates')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'company_research', filter: `user_id=eq.${user.id}` },
-        () => {
-          loadCompletedResearch();
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'company_research', filter: `user_id=eq.${user.id}` },
-        () => {
-          // Refresh when research status changes (processing -> completed)
-          loadCompletedResearch();
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'prospect_research', filter: `user_id=eq.${user.id}` },
-        () => {
-          loadCompletedResearch();
-        },
-      )
-      .subscribe();
+  useRealtimeSubscription('companies-research-update', {
+    table: 'company_research',
+    event: 'UPDATE',
+    filter: user?.id ? `user_id=eq.${user.id}` : undefined,
+    callback: () => loadCompletedResearch(),
+    debounceMs: 500,
+  });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id, campaignId, loadCompletedResearch]);
+  useRealtimeSubscription('companies-prospect-insert', {
+    table: 'prospect_research',
+    event: 'INSERT',
+    filter: user?.id ? `user_id=eq.${user.id}` : undefined,
+    callback: () => loadCompletedResearch(),
+    debounceMs: 500,
+  });
 
   const handleSalesforceImport = async () => {
     if (!salesforceCampaignId.trim()) {
@@ -282,18 +276,32 @@ export default function Companies() {
   };
 
   const handleAddManual = async () => {
-    if (!manualName.trim()) {
-      toast.error('Please enter a company name');
+    if (!campaignId || !user?.id) return;
+
+    // Sanitize inputs
+    const name = sanitizeInput(manualName.trim());
+    const website = sanitizeUrl(manualWebsite.trim()) || undefined;
+    const linkedin_url = sanitizeUrl(manualLinkedin.trim()) || undefined;
+
+    // Validate using schema
+    const validation = companySchema.safeParse({
+      name,
+      website,
+      linkedin_url,
+    });
+
+    if (!validation.success) {
+      const firstError = validation.error.errors[0];
+      toast.error(firstError.message);
       return;
     }
-    if (!campaignId || !user?.id) return;
 
     setIsAddingManual(true);
     try {
       const newCompany = await addManualCompany(user.id, campaignId, {
-        name: manualName.trim(),
-        website: manualWebsite.trim() || undefined,
-        linkedin_url: manualLinkedin.trim() || undefined,
+        name,
+        website,
+        linkedin_url,
       });
 
       setCompanies([
@@ -375,21 +383,10 @@ export default function Companies() {
     }
   };
 
-  // Helper to extract domain from website URL
-  const getDomain = (website?: string) => {
-    if (!website) return null;
-    try {
-      const url = website.startsWith('http') ? website : `https://${website}`;
-      return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
-    } catch {
-      return website.toLowerCase();
-    }
-  };
-
-  // Filter out companies that have completed research
+  // Filter out companies that have completed research (using centralized domain normalization)
   const pendingCompanies = companies.filter((c) => {
-    const domain = getDomain(c.website);
-    return !domain || !completedDomains.has(domain);
+    const domain = normalizeCompanyDomain(c.website, c.name);
+    return !domain || !completedDomains.has(domain.toLowerCase());
   });
 
   const selectedCount = pendingCompanies.filter((c) => c.selected).length;
@@ -772,5 +769,14 @@ export default function Companies() {
       </Dialog>
 
     </AppLayout>
+  );
+}
+
+// Wrap with error boundary to prevent crashes
+export default function Companies() {
+  return (
+    <PageErrorBoundary>
+      <CompaniesPage />
+    </PageErrorBoundary>
   );
 }

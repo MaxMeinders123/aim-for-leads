@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAppStore } from "@/stores/appStore";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Login from "./pages/Login";
 import Campaigns from "./pages/Campaigns";
 import Companies from "./pages/Companies";
@@ -90,41 +91,52 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthWrapper>
-          <Routes>
-            {/* Auth */}
-            <Route path="/" element={<Login />} />
-            <Route path="/login" element={<Login />} />
+  <ErrorBoundary
+    onError={(error, errorInfo) => {
+      // Log errors to console in development
+      console.error('App-level error:', error, errorInfo);
+      // In production, you could send errors to an error tracking service like Sentry
+      // if (import.meta.env.PROD) {
+      //   Sentry.captureException(error, { extra: errorInfo });
+      // }
+    }}
+  >
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthWrapper>
+            <Routes>
+              {/* Auth */}
+              <Route path="/" element={<Login />} />
+              <Route path="/login" element={<Login />} />
 
-            {/* Main flow */}
-            <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
-            <Route path="/companies/:campaignId" element={<ProtectedRoute><Companies /></ProtectedRoute>} />
-            <Route path="/research/:campaignId" element={<ProtectedRoute><Research /></ProtectedRoute>} />
-            <Route path="/contacts/:campaignId" element={<ProtectedRoute><ContactsView /></ProtectedRoute>} />
+              {/* Main flow */}
+              <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
+              <Route path="/companies/:campaignId" element={<ProtectedRoute><Companies /></ProtectedRoute>} />
+              <Route path="/research/:campaignId" element={<ProtectedRoute><Research /></ProtectedRoute>} />
+              <Route path="/contacts/:campaignId" element={<ProtectedRoute><ContactsView /></ProtectedRoute>} />
 
-            {/* Settings */}
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              {/* Settings */}
+              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
-            {/* Legacy redirects */}
-            <Route path="/companies" element={<Navigate to="/campaigns" replace />} />
-            <Route path="/contacts" element={<Navigate to="/campaigns" replace />} />
-            <Route path="/research" element={<Navigate to="/campaigns" replace />} />
-            <Route path="/results" element={<Navigate to="/campaigns" replace />} />
-            <Route path="/add-companies" element={<Navigate to="/campaigns" replace />} />
-            <Route path="/company-preview" element={<Navigate to="/campaigns" replace />} />
+              {/* Legacy redirects */}
+              <Route path="/companies" element={<Navigate to="/campaigns" replace />} />
+              <Route path="/contacts" element={<Navigate to="/campaigns" replace />} />
+              <Route path="/research" element={<Navigate to="/campaigns" replace />} />
+              <Route path="/results" element={<Navigate to="/campaigns" replace />} />
+              <Route path="/add-companies" element={<Navigate to="/campaigns" replace />} />
+              <Route path="/company-preview" element={<Navigate to="/campaigns" replace />} />
 
-            {/* 404 */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AuthWrapper>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+              {/* 404 */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthWrapper>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
