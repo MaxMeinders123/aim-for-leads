@@ -121,13 +121,15 @@ serve(async (req) => {
 
     // First, try to get company info from company_id if provided
     if (resolvedCompanyId) {
-      const { data: company } = await supabase
+      const { data: company, error: companyError } = await supabase
         .from("companies")
         .select("id, salesforce_account_id, campaign_id, salesforce_campaign_id")
         .eq("id", resolvedCompanyId)
-        .single();
+        .maybeSingle();
 
-      if (company) {
+      if (companyError) {
+        console.error("[receive-prospect-results] Error fetching company:", companyError.message);
+      } else if (company) {
         if (!resolvedSalesforceAccountId) resolvedSalesforceAccountId = company.salesforce_account_id;
         if (!resolvedCampaignId) resolvedCampaignId = company.campaign_id;
         if (!resolvedSalesforceCampaignId) resolvedSalesforceCampaignId = company.salesforce_campaign_id;
@@ -136,13 +138,15 @@ serve(async (req) => {
 
     // If we have companyResearchId, look up campaign_id and salesforce IDs from the company_research record
     if (companyResearchId) {
-      const { data: companyResearch } = await supabase
+      const { data: companyResearch, error: companyResearchError } = await supabase
         .from("company_research")
         .select("salesforce_account_id, campaign_id, company_domain")
         .eq("id", companyResearchId)
-        .single();
+        .maybeSingle();
 
-      if (companyResearch) {
+      if (companyResearchError) {
+        console.error("[receive-prospect-results] Error fetching company_research:", companyResearchError.message);
+      } else if (companyResearch) {
         if (!resolvedCampaignId && companyResearch.campaign_id) {
           resolvedCampaignId = companyResearch.campaign_id;
           console.log(`[receive-prospect-results] Resolved campaign_id from company_research: ${resolvedCampaignId}`);
@@ -233,40 +237,23 @@ serve(async (req) => {
       return { url: cleaned, validated: true };
     };
 
-    // Check for duplicate prospects across ALL research runs for this company domain + user
-    // This prevents duplicates when re-researching the same company
+    // Check for duplicate prospects ONLY within the current company_research_id
+    // This allows re-researching the same company domain with different campaigns
+    // while still preventing duplicate entries within a single research run
     let existingProspectsData: { first_name: string; last_name: string; linkedin_url: string | null }[] = [];
 
     if (companyResearchId) {
-      // Find all company_research IDs for the same domain and user
-      const normalizedDomain = company_domain?.toLowerCase()?.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/.*$/, '') || '';
-      
-      if (normalizedDomain) {
-        const { data: allResearchIds } = await supabase
-          .from("company_research")
-          .select("id")
-          .eq("user_id", user_id)
-          .ilike("company_domain", `%${normalizedDomain}%`);
+      // Fetch existing prospects only for THIS company_research_id
+      // NOT for all research runs of the same domain
+      const { data: existingData, error: existingError } = await supabase
+        .from("prospect_research")
+        .select("first_name, last_name, linkedin_url")
+        .eq("company_research_id", companyResearchId)
+        .eq("user_id", user_id);
 
-        const crIds = (allResearchIds || []).map((r: { id: string }) => r.id);
-
-        if (crIds.length > 0) {
-          const { data: existingData } = await supabase
-            .from("prospect_research")
-            .select("first_name, last_name, linkedin_url")
-            .in("company_research_id", crIds)
-            .eq("user_id", user_id);
-
-          existingProspectsData = existingData || [];
-        }
+      if (existingError) {
+        console.error("[receive-prospect-results] Error checking existing prospects:", existingError.message);
       } else {
-        // Fallback: check only current company_research_id
-        const { data: existingData } = await supabase
-          .from("prospect_research")
-          .select("first_name, last_name, linkedin_url")
-          .eq("company_research_id", companyResearchId)
-          .eq("user_id", user_id);
-
         existingProspectsData = existingData || [];
       }
     }
@@ -425,6 +412,13 @@ serve(async (req) => {
         .eq("id", legacyId);
     }
 
+    // Determine final status
+    let finalStatus = status === "rejected" ? "rejected" : "completed";
+    if (insertedProspects.length === 0 && skippedDuplicates.length > 0) {
+      // All prospects were duplicates
+      finalStatus = "partial";
+    }
+
     return new Response(
       JSON.stringify({
         received: true,
@@ -434,7 +428,7 @@ serve(async (req) => {
         prospects_skipped_duplicate: skippedDuplicates.length,
         prospect_ids: insertedProspects,
         linkedin_stats: linkedinStats,
-        status: status === "rejected" ? "rejected" : "completed",
+        status: finalStatus,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

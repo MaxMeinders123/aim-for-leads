@@ -228,10 +228,28 @@ serve(async (req) => {
 
     // Auto-trigger prospect research for companies that are valid targets
     const stillOperates = company_data?.stillOperatesIndependently === true;
+
+    // Determine if we should trigger prospect research
+    // SKIP prospect research only for companies that are explicitly invalid
+    const explicitlyInvalid =
+      companyStatus === "Bankrupt" ||
+      companyStatus === "Not_Found" ||
+      companyStatus === "error" ||
+      companyStatus === "failed";
+
+    // TRIGGER prospects unless explicitly invalid
+    // If companyStatus is null/unknown, still trigger (user wants to research)
     const shouldTriggerProspects =
-      companyStatus === "Operating" ||
-      (companyStatus === "Acquired" && stillOperates) ||
-      companyStatus === "Renamed";
+      !explicitlyInvalid && (
+        companyStatus === "Operating" ||
+        companyStatus === "Renamed" ||
+        (companyStatus === "Acquired" && stillOperates) ||
+        !companyStatus // null/undefined = unknown, trigger anyway
+      );
+
+    if (companyStatus === null) {
+      console.log("[receive-company-results] WARNING: companyStatus is null, proceeding with prospect research anyway");
+    }
 
     if (shouldTriggerProspects) {
       try {
