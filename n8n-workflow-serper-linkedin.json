@@ -1,0 +1,152 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "845a71b9-f7fd-4466-9599-3cb79e34d3a4",
+        "responseMode": "onReceived",
+        "responseData": "{\"status\": \"processing\", \"message\": \"Prospect research started\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [4928, 1200],
+      "id": "6ce6e2c2-5245-4635-a8c4-180dec1c2f32",
+      "name": "Prospect Research Webhook",
+      "webhookId": "845a71b9-f7fd-4466-9599-3cb79e34d3a4"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "# Role\nYou are a senior B2B prospect sourcer. Your job is to generate a list of likely relevant contacts (candidates) for later verification.\n\n# Task\nFind decision-makers and key influencers at the target company for the campaign. Prioritize relevance and coverage.\n\n# Key rule (IMPORTANT)\nDo NOT require confirmed \"Present\" employment on LinkedIn. LinkedIn URLs may be missing or uncertain - that's OK, they will be enriched in the next step.\n\n# LinkedIn handling\n- If you find a LinkedIn profile URL that appears to match, include it.\n- If you are not confident or cannot find one, set \"linkedin\" to an empty string \"\".\n- DO NOT construct fake LinkedIn URLs - only use URLs you actually found.\n\n# Contact quantity\nReturn 4–10 contacts when possible. If you can't find that many, return as many as you can.\n\n# Exclusions\nExclude: board members, non-executive directors, advisors, former employees, support staff, interns.\n\n# Output format\nReturn JSON ONLY (no markdown, no backticks) using exactly this schema:\n{\n  \"status\": \"completed\",\n  \"company\": \"company name\",\n  \"contacts\": [\n    {\n      \"first_name\": \"string\",\n      \"last_name\": \"string\",\n      \"job_title\": \"string\",\n      \"linkedin\": \"full LinkedIn URL or empty string\",\n      \"priority\": \"High\" | \"Medium\" | \"Low\",\n      \"priority_reason\": \"1-2 sentences max why relevant\",\n      \"pitch_type\": \"Technical\" | \"Business\" | \"Executive\"\n    }\n  ]\n}"
+            },
+            {
+              "content": "=Find prospects at {{ $json.body.company.name }} ({{ $json.body.company.website }})\n\nCampaign: {{ $json.body.campaign.campaignName }}\nProduct: {{ $json.body.campaign.product }}\nRegion: {{ $json.body.campaign.targetRegion }}\nTarget Titles: {{ $json.body.campaign.targetTitles }}\nPersonas: {{ $json.body.campaign.targetPersonas }}\nPrimary Angle: {{ $json.body.campaign.primaryAngle }}\nPain Points: {{ $json.body.campaign.painPoints }}\nTech Focus: {{ $json.body.campaign.techFocus }}\n\nCompany Research:\n{{ JSON.stringify($json.body.companyResearch) }}\n\nInstructions:\n- Return 4–10 relevant people with names, titles, and LinkedIn URLs if you can find them.\n- If LinkedIn is uncertain, leave linkedin=\"\" - it will be enriched using Serper.\n- Focus on quality over quantity."
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "high"
+          }
+        },
+        "options": {
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "high"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [5120, 1200],
+      "id": "a19e3b8e-3458-457e-918b-b6642f280860",
+      "name": "Contact Search",
+      "credentials": {
+        "openAiApi": {
+          "id": "MvQi1874NPMQ2ug7",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI response -> {status, company, contacts}\nconst aiOutput = $input.item.json;\nlet parsed;\n\ntry {\n  // Try multiple possible locations for the text\n  const text =\n    aiOutput.output?.[0]?.content?.[0]?.text ||\n    aiOutput.content?.[0]?.text ||\n    aiOutput.text ||\n    aiOutput.output_text ||\n    '';\n\n  const raw = (typeof text === 'string' ? text : JSON.stringify(text)).trim();\n  \n  // Strip markdown fences if present\n  const cleaned = raw\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/```$/i, '')\n    .trim();\n  \n  // Extract JSON from the text (find first { to last })\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  const jsonStr = (start !== -1 && end !== -1) ? cleaned.slice(start, end + 1) : cleaned;\n\n  parsed = JSON.parse(jsonStr);\n} catch (err) {\n  console.error('Failed to parse OpenAI response:', err.message);\n  parsed = { status: 'error', company: '', contacts: [] };\n}\n\n// Ensure contacts is an array\nif (!Array.isArray(parsed.contacts)) {\n  parsed.contacts = [];\n}\n\nreturn [{ json: parsed }];"
+      },
+      "id": "4be65298-d9e7-4997-9dae-4bae993b26ed",
+      "name": "Code: Format Prospect Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5440, 1200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enrich all contacts with LinkedIn URLs using Serper API\n// Processes sequentially to avoid merge issues\n\nconst SERPER_API_KEY = $env.SERPER_API_KEY || '331d5fd92fb20aa9b798c1d46d8777ae23f92119';\n\nconst input = $input.first().json || {};\nconst contacts = Array.isArray(input.contacts) ? input.contacts : [];\n\n// Get webhook data\nlet webhookBody = {};\ntry {\n  webhookBody = $('Prospect Research Webhook').item.json.body || {};\n} catch {}\n\nconst companyFromWebhook = webhookBody.company?.name || webhookBody.company?.website || webhookBody.company_domain || '';\nconst companyFromAI = input.company || '';\n\n// Helper: Clean company name\nfunction cleanCompanyName(name) {\n  if (!name) return '';\n  \n  let cleaned = name\n    .replace(/^https?:\\/\\//i, '')\n    .replace(/^www\\./i, '')\n    .split('/')[0]\n    .trim();\n  \n  // If it's a domain (has a dot), extract the part before the first dot\n  if (cleaned.includes('.')) {\n    cleaned = cleaned.split('.')[0];\n  } else {\n    // If it's a company name, remove legal entity suffixes\n    cleaned = cleaned\n      .replace(/\\b(nv|bv|bvba|inc|llc|ltd|gmbh|sa|ag|corp|corporation|limited|b\\.v\\.)\\s*$/i, '')\n      .trim();\n  }\n  \n  return cleaned;\n}\n\n// Helper: Normalize LinkedIn URL\nfunction normalizeLinkedIn(url) {\n  if (!url || typeof url !== 'string') return '';\n  const u = url.split('?')[0].split('#')[0].trim();\n  const m = u.match(/https?:\\/\\/([a-z]{2,3}\\.)?(www\\.)?linkedin\\.com\\/in\\/([^\\/?#]+)\\/?/i);\n  if (!m) return '';\n  return `https://www.linkedin.com/in/${m[3]}/`;\n}\n\n// Helper: Canonicalize string\nfunction canon(s) {\n  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');\n}\n\n// Helper: Find best LinkedIn match from Serper results\nfunction findBestLinkedIn(firstName, lastName, company, organic) {\n  const firstNameCanon = canon(firstName);\n  const lastNameCanon = canon(lastName);\n  const companyCanon = canon(company);\n  \n  let foundUrl = '';\n  let matchScore = 0;\n  \n  for (const result of organic) {\n    const link = normalizeLinkedIn(result?.link);\n    if (!link) continue;\n    \n    const title = String(result?.title || '').toLowerCase();\n    const snippet = String(result?.snippet || '').toLowerCase();\n    const text = `${title} ${snippet}`;\n    const slug = result?.link?.match(/linkedin\\.com\\/in\\/([^\\/?#]+)/i)?.[1] || '';\n    const slugCanon = canon(slug);\n    \n    let score = 0;\n    \n    // Last name must appear in text OR slug\n    const lastInText = lastName && text.includes(lastName.toLowerCase());\n    const lastInSlug = lastNameCanon && slugCanon.includes(lastNameCanon);\n    \n    if (!lastInText && !lastInSlug) continue;\n    \n    if (lastInText) score += 3;\n    if (lastInSlug) score += 2;\n    if (firstName && text.includes(firstName.toLowerCase())) score += 2;\n    if (firstNameCanon && slugCanon.includes(firstNameCanon)) score += 1;\n    if (companyCanon && text.includes(companyCanon)) score += 2;\n    if (organic.indexOf(result) === 0) score += 1;\n    \n    if (score > matchScore) {\n      matchScore = score;\n      foundUrl = link;\n    }\n  }\n  \n  return { url: foundUrl, score: matchScore };\n}\n\nconst cleanCompany = cleanCompanyName(companyFromAI || companyFromWebhook);\nconst enrichedContacts = [];\nlet enrichedCount = 0;\nlet skippedCount = 0;\nlet notFoundCount = 0;\n\n// Process each contact sequentially\nfor (let i = 0; i < contacts.length; i++) {\n  const contact = contacts[i];\n  const firstName = String(contact.first_name || '').trim();\n  const lastName = String(contact.last_name || '').trim();\n  const fullName = `${firstName} ${lastName}`.trim();\n  const jobTitle = String(contact.job_title || '').trim();\n  const existingLinkedIn = normalizeLinkedIn(contact.linkedin);\n  \n  // If already has LinkedIn, keep it\n  if (existingLinkedIn) {\n    enrichedContacts.push({\n      ...contact,\n      linkedin: existingLinkedIn,\n      linkedin_source: 'ai'\n    });\n    skippedCount++;\n    continue;\n  }\n  \n  // Build Serper query\n  const titleKeywords = jobTitle\n    .replace(/\\b(the|and|or|of|at|in|for|senior|junior|lead|engineer|manager|director)\\b/gi, '')\n    .trim()\n    .split(/\\s+/)\n    .slice(0, 2)\n    .join(' ');\n  \n  const queryParts = [\n    'site:linkedin.com/in',\n    `\"${fullName}\"`,\n    titleKeywords,\n    cleanCompany\n  ].filter(Boolean);\n  \n  const query = queryParts.join(' ');\n  \n  try {\n    // Call Serper API\n    const response = await fetch('https://google.serper.dev/search', {\n      method: 'POST',\n      headers: {\n        'X-API-KEY': SERPER_API_KEY,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify({ q: query, num: 5 })\n    });\n    \n    if (!response.ok) {\n      console.log(`Serper API error for ${fullName}: ${response.status}`);\n      enrichedContacts.push({\n        ...contact,\n        linkedin: '',\n        linkedin_source: 'serper_error',\n        _serperQuery: query\n      });\n      notFoundCount++;\n      continue;\n    }\n    \n    const data = await response.json();\n    const organic = data.organic || [];\n    \n    // Find best match\n    const match = findBestLinkedIn(firstName, lastName, cleanCompany, organic);\n    \n    if (match.url) {\n      enrichedContacts.push({\n        ...contact,\n        linkedin: match.url,\n        linkedin_source: 'serper',\n        _match_score: match.score,\n        _serperQuery: query\n      });\n      enrichedCount++;\n      console.log(`Found LinkedIn for ${fullName}: ${match.url} (score: ${match.score})`);\n    } else {\n      enrichedContacts.push({\n        ...contact,\n        linkedin: '',\n        linkedin_source: 'not_found',\n        _serperQuery: query\n      });\n      notFoundCount++;\n      console.log(`No LinkedIn found for ${fullName}`);\n    }\n    \n    // Rate limit: 300ms between requests\n    if (i < contacts.length - 1) {\n      await new Promise(resolve => setTimeout(resolve, 300));\n    }\n    \n  } catch (err) {\n    console.error(`Error processing ${fullName}: ${err.message}`);\n    enrichedContacts.push({\n      ...contact,\n      linkedin: '',\n      linkedin_source: 'error',\n      _serperQuery: query\n    });\n    notFoundCount++;\n  }\n}\n\nconsole.log(`Serper enrichment complete: ${enrichedCount} found, ${skippedCount} already had, ${notFoundCount} not found`);\n\nreturn [{\n  json: {\n    status: input.status || 'completed',\n    company: companyFromAI || companyFromWebhook || cleanCompany,\n    contacts: enrichedContacts,\n    linkedin_stats: {\n      total: contacts.length,\n      already_had_linkedin: skippedCount,\n      enriched_by_serper: enrichedCount,\n      not_found: notFoundCount\n    }\n  }\n}];"
+      },
+      "id": "51aebc76-7bb2-4351-823e-1ec2d1223a44",
+      "name": "Code: Serper LinkedIn Enrichment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5616, 1200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep only contacts that have a valid LinkedIn profile URL\nconst input = $input.first().json || {};\nconst contacts = Array.isArray(input.contacts) ? input.contacts : [];\n\nconst filtered = contacts.filter(c => {\n  const li = String(c.linkedin || '').trim();\n  return li.includes('linkedin.com/in/') && li.startsWith('http');\n});\n\nconst existingStats = input.linkedin_stats || {};\nconst stats = {\n  ...existingStats,\n  with_linkedin: filtered.length,\n  without_linkedin: contacts.length - filtered.length\n};\n\nconsole.log(`LinkedIn filtering: ${stats.with_linkedin}/${stats.total || contacts.length} contacts have LinkedIn URLs`);\n\nreturn [{ json: { ...input, contacts: filtered, linkedin_stats: stats } }];"
+      },
+      "id": "6e1c034d-8dfb-4f70-bc55-b3e32d0bf322",
+      "name": "Code: Filter LinkedIn Only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5808, 1200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ ($json.contacts || []).length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e30554a3-0b6a-4431-92da-8f84fd86f73e",
+      "name": "IF: Has LinkedIn Prospects",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [6000, 1200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://lqrkrzikjlavnltbnnoa.supabase.co/functions/v1/receive-prospect-results",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  user_id: $('Prospect Research Webhook').item.json.body.user_id,\n  campaign_id: $('Prospect Research Webhook').item.json.body.campaign_id,\n  company_id: $('Prospect Research Webhook').item.json.body.company_id,\n  company_research_id: $('Prospect Research Webhook').item.json.body.company_research_id,\n  company_domain: $('Prospect Research Webhook').item.json.body.company_domain,\n  salesforce_account_id: $('Prospect Research Webhook').item.json.body.salesforce_account_id,\n  salesforce_campaign_id: $('Prospect Research Webhook').item.json.body.salesforce_campaign_id,\n  prospect: JSON.stringify({\n    status: $json.status,\n    company: $json.company,\n    contacts: $json.contacts,\n    linkedin_stats: $json.linkedin_stats\n  }),\n  status: 'completed'\n}\n}}",
+        "options": {}
+      },
+      "id": "4fce615a-b83d-4890-abe0-97174f1ec23f",
+      "name": "HTTP: Callback to receive-prospect-results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [6192, 1200]
+    }
+  ],
+  "connections": {
+    "Prospect Research Webhook": {
+      "main": [[{ "node": "Contact Search", "type": "main", "index": 0 }]]
+    },
+    "Contact Search": {
+      "main": [[{ "node": "Code: Format Prospect Result", "type": "main", "index": 0 }]]
+    },
+    "Code: Format Prospect Result": {
+      "main": [[{ "node": "Code: Serper LinkedIn Enrichment", "type": "main", "index": 0 }]]
+    },
+    "Code: Serper LinkedIn Enrichment": {
+      "main": [[{ "node": "Code: Filter LinkedIn Only", "type": "main", "index": 0 }]]
+    },
+    "Code: Filter LinkedIn Only": {
+      "main": [[{ "node": "IF: Has LinkedIn Prospects", "type": "main", "index": 0 }]]
+    },
+    "IF: Has LinkedIn Prospects": {
+      "main": [[{ "node": "HTTP: Callback to receive-prospect-results", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e9cede33a723de861755fc4c3b19745bba65cbc53a84a89eef946fc41c7f58e4"
+  }
+}
