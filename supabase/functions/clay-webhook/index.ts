@@ -30,6 +30,8 @@ serve(async (req) => {
       link,          // Merged CRM link (Salesforce URL)
       email,         // Work Email from Clay
       phone,         // Mobile Phone from Clay
+      sf_dupe_id,    // Existing Contact ID merged (from Clay)
+      sf_new_id,     // New Contact Record Id (from Clay)
       // Legacy fields
       is_duplicate,
       salesforce_url,
@@ -77,6 +79,8 @@ serve(async (req) => {
       if (crmLink) updateFields.salesforce_url = crmLink;
       if (email) updateFields.email = email;
       if (phone) updateFields.phone = phone;
+      if (sf_dupe_id) updateFields.sf_dupe_id = sf_dupe_id;
+      if (sf_new_id) updateFields.sf_new_id = sf_new_id;
 
       let updateQuery = supabase
         .from("prospect_research")

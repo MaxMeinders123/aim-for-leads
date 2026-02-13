@@ -434,31 +434,35 @@ function ContactsViewPage() {
         return;
       }
 
-      if (!selectedCampaign) {
-        toast.error('No campaign selected.');
-        return;
-      }
-
-      // Get salesforce IDs from the prospect's company
-      const { data: companyData } = await supabase
+      // Get full prospect data including sf_dupe_id and sf_new_id
+      const { data: prospectData } = await supabase
         .from('prospect_research')
-        .select('salesforce_account_id, salesforce_campaign_id, personal_id')
+        .select('salesforce_account_id, salesforce_campaign_id, personal_id, sf_dupe_id, sf_new_id')
         .eq('id', prospect.id)
         .single();
 
-      const sfAccountId = companyData?.salesforce_account_id;
-      const sfCampaignId = companyData?.salesforce_campaign_id;
+      const sfAccountId = prospectData?.salesforce_account_id;
+      const sfCampaignId = prospectData?.salesforce_campaign_id;
 
       if (!sfAccountId || !sfCampaignId) {
-        toast.error('Campaign missing Salesforce Account ID or Campaign ID. Update campaign settings.');
+        toast.error('Prospect missing Salesforce Account ID or Campaign ID. These should come from the research pipeline.');
+        return;
+      }
+
+      // Use sf_new_id (new contact) or sf_dupe_id (existing merged contact) as the contact identifier
+      const sfContactId = prospectData?.sf_new_id || prospectData?.sf_dupe_id;
+      if (!sfContactId) {
+        toast.error('No Salesforce Contact ID found. Clay must return sf_new_id or sf_dupe_id first.');
         return;
       }
 
       const payload = {
-        personal_id: companyData?.personal_id || prospect.id,
+        personal_id: prospectData?.personal_id || prospect.id,
         session_id: null,
-        salesforce_contact_id: prospect.salesforce_url,
+        salesforce_contact_id: sfContactId,
         salesforce_campaign_id: sfCampaignId,
+        sf_dupe_id: prospectData?.sf_dupe_id || null,
+        sf_new_id: prospectData?.sf_new_id || null,
         prospect_name: `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim(),
         prospect_title: prospect.job_title,
         company_name: prospect.company_name || null,
