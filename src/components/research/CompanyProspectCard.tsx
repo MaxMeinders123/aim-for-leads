@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronDown, ChevronUp, Building2, ExternalLink, Send, Loader2, Pencil, Check, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Building2, ExternalLink, Send, Loader2, Pencil, Check, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -195,7 +195,7 @@ export function CompanyProspectCard({ company, prospects, onProspectUpdated }: C
                           {/* Clay Status Badge - improved messaging */}
                           {(() => {
                             const hasEnrichmentData = !!(prospect.email || prospect.phone);
-                            const clayHasResponded = ['new', 'update', 'fail', 'duplicate'].includes(prospect.status?.toLowerCase() || '');
+                            const status = prospect.status?.toLowerCase() || '';
 
                             if (isSending) {
                               return (
@@ -211,15 +211,36 @@ export function CompanyProspectCard({ company, prospects, onProspectUpdated }: C
                               );
                             }
 
+                            // Show enrichment failure status
+                            if (status === 'fail') {
+                              return (
+                                <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  Clay enrichment failed
+                                </Badge>
+                              );
+                            }
+
+                            // Show duplicate status
+                            if (status === 'duplicate') {
+                              return (
+                                <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  Duplicate in Salesforce
+                                </Badge>
+                              );
+                            }
+
                             if (hasEnrichmentData) {
                               return (
                                 <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
                                   Enriched by Clay
                                 </Badge>
                               );
                             }
 
-                            if (prospect.sent_to_clay && !clayHasResponded) {
+                            if (prospect.sent_to_clay && !['new', 'update', 'fail', 'duplicate'].includes(status)) {
                               return (
                                 <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                                   <span className="flex items-center gap-1">

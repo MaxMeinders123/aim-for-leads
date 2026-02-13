@@ -818,13 +818,33 @@ function ContactsViewPage() {
                                       {/* Clay Status Badge - improved messaging */}
                                       {(() => {
                                         const hasEnrichmentData = !!(prospect.email || prospect.phone);
-                                        const clayHasResponded = ['new', 'update', 'fail', 'duplicate'].includes(prospect.status?.toLowerCase() || '');
+                                        const status = prospect.status?.toLowerCase() || '';
 
                                         if (isSending) {
                                           return (
                                             <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                                               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                                               Sending to Clay...
+                                            </Badge>
+                                          );
+                                        }
+
+                                        // Show enrichment failure status
+                                        if (status === 'fail') {
+                                          return (
+                                            <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                                              <AlertCircle className="h-3 w-3 mr-1" />
+                                              Clay enrichment failed
+                                            </Badge>
+                                          );
+                                        }
+
+                                        // Show duplicate status
+                                        if (status === 'duplicate') {
+                                          return (
+                                            <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                                              <AlertCircle className="h-3 w-3 mr-1" />
+                                              Duplicate in Salesforce
                                             </Badge>
                                           );
                                         }
@@ -838,7 +858,7 @@ function ContactsViewPage() {
                                           );
                                         }
 
-                                        if (prospect.sent_to_clay && !clayHasResponded) {
+                                        if (prospect.sent_to_clay && !['new', 'update', 'fail', 'duplicate'].includes(status)) {
                                           return (
                                             <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                                               <Loader2 className="h-3 w-3 mr-1 animate-spin" />

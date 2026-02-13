@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Users, Linkedin, Send, CheckCircle2, Loader2, ExternalLink, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Users, Linkedin, Send, CheckCircle2, Loader2, ExternalLink, AlertTriangle, ShieldCheck, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { StatusBadge } from './StatusBadge';
@@ -258,7 +258,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                       {/* Clay Status Badge - improved messaging */}
                       {(() => {
                         const hasEnrichmentData = !!(prospect.email || prospect.phone);
-                        const clayHasResponded = ['new', 'update', 'fail', 'duplicate'].includes(prospect.status?.toLowerCase() || '');
+                        const status = prospect.status?.toLowerCase() || '';
 
                         if (isSending) {
                           return (
@@ -274,6 +274,26 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                           );
                         }
 
+                        // Show enrichment failure status
+                        if (status === 'fail') {
+                          return (
+                            <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              Clay enrichment failed
+                            </Badge>
+                          );
+                        }
+
+                        // Show duplicate status
+                        if (status === 'duplicate') {
+                          return (
+                            <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              Duplicate in Salesforce
+                            </Badge>
+                          );
+                        }
+
                         if (hasEnrichmentData) {
                           return (
                             <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
@@ -283,7 +303,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                           );
                         }
 
-                        if (prospect.sent_to_clay && !clayHasResponded) {
+                        if (prospect.sent_to_clay && !['new', 'update', 'fail', 'duplicate'].includes(status)) {
                           return (
                             <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                               <span className="flex items-center gap-1">
