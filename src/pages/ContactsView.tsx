@@ -810,17 +810,43 @@ function ContactsViewPage() {
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap mb-1">
                                       <span className="font-medium">{fullName}</span>
-                                      {isSent && (
-                                        <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
-                                          <Check className="w-3 h-3 text-white" />
-                                        </div>
-                                      )}
                                       {prospect.priority && (
                                         <Badge className={getPriorityColor(prospect.priority)}>
                                           {prospect.priority}
                                         </Badge>
                                       )}
-                                        {(() => {
+                                      {/* Clay Status Badge - improved messaging */}
+                                      {(() => {
+                                        const hasEnrichmentData = !!(prospect.email || prospect.phone);
+
+                                        if (isSending) {
+                                          return (
+                                            <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                              Sending to Clay...
+                                            </Badge>
+                                          );
+                                        }
+
+                                        if (hasEnrichmentData) {
+                                          return (
+                                            <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                                              <Check className="h-3 w-3 mr-1" />
+                                              Enriched by Clay
+                                            </Badge>
+                                          );
+                                        }
+
+                                        if (prospect.sent_to_clay) {
+                                          return (
+                                            <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                              Awaiting Clay enrichment
+                                            </Badge>
+                                          );
+                                        }
+
+                                        // Show old status meta for other cases
                                         const statusMeta = getClayStatusMeta(prospect.status, prospect.sent_to_clay);
                                         return (
                                           <Badge
@@ -831,7 +857,7 @@ function ContactsViewPage() {
                                           </Badge>
                                         );
                                       })()}
-                                      {prospect.sent_to_clay && prospect.sent_to_clay_at && (
+                                      {prospect.sent_to_clay && prospect.sent_to_clay_at && (prospect.email || prospect.phone) && (
                                         <Badge variant="outline" className="text-xs" title={`Sent on ${new Date(prospect.sent_to_clay_at).toLocaleString()}`}>
                                           Sent {new Date(prospect.sent_to_clay_at).toLocaleDateString()}
                                         </Badge>
@@ -923,77 +949,102 @@ function ContactsViewPage() {
                                   </div>
 
                                   {/* Action buttons */}
-                                  <div className="shrink-0 flex items-center gap-2">
-                                    {!isSent ? (
+                                  <div className="shrink-0 flex flex-col items-end gap-2">
+                                    {/* Primary action row - Send to Clay */}
+                                    <div className="flex items-center gap-2">
+                                      {!isSent ? (
+                                        <Button
+                                          size="sm"
+                                          variant="default"
+                                          onClick={() => promptLinkedinCheck(prospect)}
+                                          disabled={isSending}
+                                          className="min-w-[140px]"
+                                        >
+                                          {isSending ? (
+                                            <>
+                                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                              Sending...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Send className="h-4 w-4 mr-2" />
+                                              Send to Clay
+                                            </>
+                                          )}
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => actualSendToClay(prospect.id)}
+                                          disabled={isSending}
+                                          className="min-w-[140px]"
+                                        >
+                                          {isSending ? (
+                                            <>
+                                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                              Sending...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Send className="h-4 w-4 mr-2" />
+                                              Resend to Clay
+                                            </>
+                                          )}
+                                        </Button>
+                                      )}
+                                    </div>
+
+                                    {/* Secondary actions row - Salesforce & Remove */}
+                                    <div className="flex items-center gap-3">
+                                      {/* Add to Salesforce Campaign button */}
+                                      {prospect.salesforce_url && n8nWebhookUrl && (
+                                        <Button
+                                          size="sm"
+                                          variant="secondary"
+                                          onClick={() => handleAddToSalesforceCampaign(prospect)}
+                                          disabled={addingToCampaign[prospect.id] || addedToCampaign[prospect.id]}
+                                          className={cn(
+                                            "h-8 px-3",
+                                            addedToCampaign[prospect.id] && "bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400"
+                                          )}
+                                          title={
+                                            addedToCampaign[prospect.id]
+                                              ? "Added to Salesforce campaign"
+                                              : "Add to Salesforce campaign"
+                                          }
+                                        >
+                                          {addingToCampaign[prospect.id] ? (
+                                            <>
+                                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                              Adding...
+                                            </>
+                                          ) : addedToCampaign[prospect.id] ? (
+                                            <>
+                                              <Check className="h-4 w-4 mr-1" />
+                                              Added to SF
+                                            </>
+                                          ) : (
+                                            <>
+                                              <UserPlus className="h-4 w-4 mr-1" />
+                                              Add to SF
+                                            </>
+                                          )}
+                                        </Button>
+                                      )}
+
+                                      {/* Remove/Wrong Contact button - separated */}
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => promptLinkedinCheck(prospect)}
-                                        disabled={isSending}
+                                        onClick={() => handleMarkAsWrongContact(prospect, group.companyName, group.companyDomain)}
+                                        className="h-8 px-3 border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                                        title="Mark as wrong contact / no longer works here"
                                       >
-                                        {isSending ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                          <>
-                                            <Send className="h-4 w-4 mr-1" />
-                                            Send to Clay
-                                          </>
-                                        )}
+                                        <UserX className="h-4 w-4 mr-1" />
+                                        Remove
                                       </Button>
-                                    ) : (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => actualSendToClay(prospect.id)}
-                                        disabled={isSending}
-                                        className="text-muted-foreground"
-                                      >
-                                        {isSending ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                          <>
-                                            <Send className="h-4 w-4 mr-1" />
-                                            Send Again
-                                          </>
-                                        )}
-                                      </Button>
-                                    )}
-                                    {/* Wrong Contact button - always visible */}
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => handleMarkAsWrongContact(prospect, group.companyName, group.companyDomain)}
-                                      className="text-muted-foreground hover:text-destructive"
-                                      title="Mark as wrong contact / no longer works here"
-                                    >
-                                      <UserX className="h-4 w-4" />
-                                    </Button>
-                                    {/* Add to Salesforce Campaign button */}
-                                    {prospect.salesforce_url && n8nWebhookUrl && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => handleAddToSalesforceCampaign(prospect)}
-                                        disabled={addingToCampaign[prospect.id] || addedToCampaign[prospect.id]}
-                                        className={cn(
-                                          "h-8 px-2",
-                                          addedToCampaign[prospect.id] && "text-green-600"
-                                        )}
-                                        title={
-                                          addedToCampaign[prospect.id]
-                                            ? "Added to Salesforce campaign"
-                                            : "Add to Salesforce campaign"
-                                        }
-                                      >
-                                        {addingToCampaign[prospect.id] ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : addedToCampaign[prospect.id] ? (
-                                          <Check className="h-4 w-4" />
-                                        ) : (
-                                          <UserPlus className="h-4 w-4" />
-                                        )}
-                                      </Button>
-                                    )}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
