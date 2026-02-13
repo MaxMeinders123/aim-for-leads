@@ -298,6 +298,8 @@ export type Database = {
           salesforce_url: string | null
           sent_to_clay: boolean
           sent_to_clay_at: string | null
+          sf_dupe_id: string | null
+          sf_new_id: string | null
           status: string | null
           user_id: string
         }
@@ -325,6 +327,8 @@ export type Database = {
           salesforce_url?: string | null
           sent_to_clay?: boolean
           sent_to_clay_at?: string | null
+          sf_dupe_id?: string | null
+          sf_new_id?: string | null
           status?: string | null
           user_id: string
         }
@@ -352,6 +356,8 @@ export type Database = {
           salesforce_url?: string | null
           sent_to_clay?: boolean
           sent_to_clay_at?: string | null
+          sf_dupe_id?: string | null
+          sf_new_id?: string | null
           status?: string | null
           user_id?: string
         }
