@@ -1,0 +1,221 @@
+{
+  "name": "Add Prospect to Salesforce Campaign",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "add-to-salesforce-campaign",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [500, 300],
+      "id": "webhook-receive",
+      "name": "Webhook - Receive Prospect",
+      "webhookId": "add-to-salesforce-campaign"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ {\n  \"salesforce_contact_id\": $json.body.salesforce_contact_id ? $json.body.salesforce_contact_id.split('/').pop() : null,\n  \"salesforce_campaign_id\": $json.body.salesforce_campaign_id,\n  \"personal_id\": $json.body.personal_id,\n  \"prospect_name\": $json.body.prospect_name,\n  \"company_name\": $json.body.company_name,\n  \"linkedin_url\": $json.body.linkedin_url,\n  \"email\": $json.body.email\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 300],
+      "id": "extract-ids",
+      "name": "Extract Salesforce IDs"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "contact-id-exists",
+              "leftValue": "={{ $json.salesforce_contact_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "campaign-id-exists",
+              "leftValue": "={{ $json.salesforce_campaign_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [940, 300],
+      "id": "check-required-fields",
+      "name": "Check Required Fields"
+    },
+    {
+      "parameters": {
+        "resource": "campaignMember",
+        "operation": "create",
+        "campaignId": "={{ $json.salesforce_campaign_id }}",
+        "contactId": "={{ $json.salesforce_contact_id }}",
+        "options": {
+          "status": "Sent"
+        }
+      },
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [1160, 200],
+      "id": "add-to-campaign",
+      "name": "Add Contact to Campaign",
+      "credentials": {
+        "salesforceOAuth2Api": {
+          "id": "YOUR_SALESFORCE_CREDENTIALS_ID",
+          "name": "Salesforce Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"success\": true,\n  \"message\": \"Contact added to campaign successfully\",\n  \"salesforce_contact_id\": $json.contactId,\n  \"salesforce_campaign_id\": $json.campaignId,\n  \"personal_id\": $('Extract Salesforce IDs').item.json.personal_id\n} }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1380, 200],
+      "id": "respond-success",
+      "name": "Respond - Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"success\": false,\n  \"message\": \"Missing required fields: salesforce_contact_id or salesforce_campaign_id\",\n  \"received_data\": $json\n} }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1160, 400],
+      "id": "respond-error-missing-fields",
+      "name": "Respond - Missing Fields"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"success\": false,\n  \"message\": \"Failed to add contact to campaign\",\n  \"error\": $json.error || 'Unknown error',\n  \"salesforce_contact_id\": $('Extract Salesforce IDs').item.json.salesforce_contact_id,\n  \"salesforce_campaign_id\": $('Extract Salesforce IDs').item.json.salesforce_campaign_id\n} }}",
+        "options": {
+          "responseCode": 500,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1380, 300],
+      "id": "respond-error-salesforce",
+      "name": "Respond - Salesforce Error"
+    }
+  ],
+  "connections": {
+    "Webhook - Receive Prospect": {
+      "main": [
+        [
+          {
+            "node": "Extract Salesforce IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Salesforce IDs": {
+      "main": [
+        [
+          {
+            "node": "Check Required Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Required Fields": {
+      "main": [
+        [
+          {
+            "node": "Add Contact to Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Missing Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Contact to Campaign": {
+      "main": [
+        [
+          {
+            "node": "Respond - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-13T00:00:00.000Z",
+  "versionId": "1"
+}

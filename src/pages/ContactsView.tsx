@@ -85,6 +85,9 @@ interface CompanyGroup {
   companyId: string;
   companyName: string;
   companyDomain: string;
+  companyStatus?: string | null;
+  cloudProvider?: string | null;
+  acquiredBy?: string | null;
   prospects: ProspectRow[];
   sentCount: number;
   unsentCount: number;
@@ -173,6 +176,9 @@ function ContactsViewPage() {
             companyId: cr.id,
             companyName: cr.company_name || cr.company_domain,
             companyDomain: cr.company_domain,
+            companyStatus: cr.company_status,
+            cloudProvider: cr.cloud_provider,
+            acquiredBy: cr.acquired_by,
             prospects: normalizedProspects,
             sentCount: normalizedProspects.filter((p) => p.sent_to_clay).length,
             unsentCount: normalizedProspects.filter((p) => !p.sent_to_clay).length,
@@ -332,6 +338,44 @@ function ContactsViewPage() {
     }
   };
 
+  const handleMarkAsWrongContact = async (prospect: ProspectRow, companyName: string, companyDomain: string) => {
+    try {
+      const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Unknown';
+
+      // Update status to not_working
+      const { error } = await supabase
+        .from('prospect_research')
+        .update({ status: 'not_working' })
+        .eq('id', prospect.id);
+
+      if (error) throw error;
+
+      // Log feedback for AI improvement
+      if (user?.id) {
+        await supabase
+          .from('research_feedback')
+          .insert({
+            user_id: user.id,
+            prospect_research_id: prospect.id,
+            company_research_id: prospect.company_research_id,
+            campaign_id: campaignId || null,
+            feedback_type: 'not_working',
+            prospect_name: fullName,
+            prospect_title: prospect.job_title,
+            company_name: companyName,
+            company_domain: companyDomain,
+            linkedin_url: prospect.linkedin_url,
+          });
+      }
+
+      toast.success('Marked as wrong contact — feedback logged for AI improvement');
+      await loadData();
+    } catch (err: unknown) {
+      logger.error('Failed to mark as wrong contact', { prospectId: prospect.id, err });
+      toast.error('Failed to mark as wrong contact');
+    }
+  };
+
   const actualSendToClay = async (prospectId: string) => {
     if (!user?.id) return;
     setSendingIds((prev) => new Set(prev).add(prospectId));
@@ -475,12 +519,21 @@ function ContactsViewPage() {
         />
 
         <div className="flex-1 overflow-auto p-6 space-y-6">
+          {/* How it works notice */}
+          <Alert className="max-w-3xl border-blue-300 bg-blue-50 dark:bg-blue-900/10 dark:border-blue-700">
+            <Users className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-sm">
+              <strong>How it works:</strong> When you run research on companies, AI-discovered prospects are automatically stored here.
+              Review them, verify LinkedIn profiles, then send to Clay for email/phone enrichment.
+            </AlertDescription>
+          </Alert>
+
           {/* LinkedIn Beta Notice */}
           <Alert className="max-w-3xl border-yellow-300 bg-yellow-50 dark:bg-yellow-900/10 dark:border-yellow-700">
             <AlertTriangle className="h-4 w-4 text-yellow-600" />
             <AlertDescription className="text-sm">
-              <strong>LinkedIn verification (Beta):</strong> Our AI research finds prospects and their LinkedIn profiles, but this is still in beta. 
-              Please <strong>check each prospect's LinkedIn profile</strong> before sending to Clay to confirm they still work at the company. 
+              <strong>LinkedIn verification (Beta):</strong> Our AI research finds prospects and their LinkedIn profiles, but this is still in beta.
+              Please <strong>check each prospect's LinkedIn profile</strong> before sending to Clay to confirm they still work at the company.
               <span className="block mt-1 text-muted-foreground italic">
                 Sorry for the extra manual step — we're working on automating this! 🙏
               </span>
@@ -593,12 +646,34 @@ function ContactsViewPage() {
                       onClick={() => toggleCompany(group.companyId)}
                       className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="p-2 rounded-lg bg-primary/10">
                           <Building2 className="h-5 w-5 text-primary" />
                         </div>
-                        <div>
-                          <h3 className="font-semibold">{group.companyName}</h3>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold">{group.companyName}</h3>
+                            {group.companyStatus && (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  'text-xs',
+                                  group.companyStatus === 'Operating' && 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400',
+                                  group.companyStatus === 'Acquired' && 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400',
+                                  group.companyStatus === 'Bankrupt' && 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400'
+                                )}
+                              >
+                                {group.companyStatus === 'Acquired' && group.acquiredBy
+                                  ? `Acquired by ${group.acquiredBy}`
+                                  : group.companyStatus}
+                              </Badge>
+                            )}
+                            {group.cloudProvider && (
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400">
+                                {group.cloudProvider}
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-sm text-muted-foreground">
                             {group.prospects.filter((p) => !p.sent_to_clay).length > 0 && (
                               <span>{group.prospects.filter((p) => !p.sent_to_clay).length} not sent</span>
@@ -662,17 +737,22 @@ function ContactsViewPage() {
                                           {prospect.priority}
                                         </Badge>
                                       )}
-                                      {(() => {
+                                        {(() => {
                                         const statusMeta = getClayStatusMeta(prospect.status, prospect.sent_to_clay);
                                         return (
-                                          <Badge 
-                                            className={statusMeta.className} 
+                                          <Badge
+                                            className={statusMeta.className}
                                             title={statusMeta.tooltip}
                                           >
                                             {statusMeta.label}
                                           </Badge>
                                         );
                                       })()}
+                                      {prospect.sent_to_clay && prospect.sent_to_clay_at && (
+                                        <Badge variant="outline" className="text-xs" title={`Sent on ${new Date(prospect.sent_to_clay_at).toLocaleString()}`}>
+                                          Sent {new Date(prospect.sent_to_clay_at).toLocaleDateString()}
+                                        </Badge>
+                                      )}
                                       {prospect.pitch_type && (
                                         <Badge variant="outline" className="text-xs">{prospect.pitch_type}</Badge>
                                       )}
@@ -759,8 +839,8 @@ function ContactsViewPage() {
                                     )}
                                   </div>
 
-                                  {/* Send to Clay button — triggers LinkedIn check dialog */}
-                                  <div className="shrink-0">
+                                  {/* Action buttons */}
+                                  <div className="shrink-0 flex items-center gap-2">
                                     {!isSent ? (
                                       <Button
                                         size="sm"
@@ -795,6 +875,16 @@ function ContactsViewPage() {
                                         )}
                                       </Button>
                                     )}
+                                    {/* Wrong Contact button - always visible */}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleMarkAsWrongContact(prospect, group.companyName, group.companyDomain)}
+                                      className="text-muted-foreground hover:text-destructive"
+                                      title="Mark as wrong contact / no longer works here"
+                                    >
+                                      <UserX className="h-4 w-4" />
+                                    </Button>
                                   </div>
                                 </div>
                               </div>
