@@ -17,7 +17,7 @@ Add a feature that allows users to send enriched prospects directly to their Sal
 - Tooltip: "Add to Salesforce Campaign"
 - Only show if:
   - `prospect.salesforce_url` exists (contact was enriched by Clay)
-  - `campaign.salesforce_campaign_id` exists (campaign is linked to Salesforce)
+  - `campaign.salesforce_account_id` AND `campaign.salesforce_campaign_id` exist (campaign is linked to Salesforce)
   - `user_integrations.n8n_webhook_url` is configured
 
 **Button States:**
@@ -30,8 +30,9 @@ Add a feature that allows users to send enriched prospects directly to their Sal
 
 **Existing fields we'll use:**
 - `user_integrations.n8n_webhook_url` - where to send the webhook
-- `prospect_research.salesforce_url` - the Salesforce contact URL
-- `campaigns.salesforce_campaign_id` - the Salesforce campaign ID
+- `prospect_research.salesforce_url` - the Salesforce contact URL (from Clay enrichment)
+- `campaigns.salesforce_account_id` - the Salesforce account ID (required)
+- `campaigns.salesforce_campaign_id` - the Salesforce campaign ID (required)
 - `prospect_research.personal_id` - unique prospect identifier
 
 ### 3. Frontend Logic
@@ -112,8 +113,8 @@ const handleAddToSalesforceCampaign = async (prospect: ProspectRow) => {
       return;
     }
 
-    if (!selectedCampaign?.salesforce_campaign_id) {
-      toast.error('This campaign is not linked to a Salesforce campaign.');
+    if (!selectedCampaign?.salesforce_account_id || !selectedCampaign?.salesforce_campaign_id) {
+      toast.error('This campaign is missing Salesforce Account ID or Campaign ID. Update campaign settings.');
       return;
     }
 
@@ -152,6 +153,7 @@ const handleAddToSalesforceCampaign = async (prospect: ProspectRow) => {
 ```tsx
 {/* Add to Salesforce Campaign Button */}
 {prospect.salesforce_url &&
+ selectedCampaign?.salesforce_account_id &&
  selectedCampaign?.salesforce_campaign_id &&
  userIntegrations?.n8n_webhook_url && (
   <Button
@@ -333,7 +335,7 @@ In your Settings page, add a field to configure the n8n webhook URL:
 |-------|---------|----------|
 | No webhook URL | "n8n webhook not configured" | Go to Settings, add webhook URL |
 | No Salesforce contact URL | "No Salesforce contact URL found" | Enrich prospect with Clay first |
-| No Salesforce campaign ID | "Campaign not linked to Salesforce" | Edit campaign, add salesforce_campaign_id |
+| No Salesforce IDs | "Campaign missing Salesforce Account ID or Campaign ID" | Edit campaign, add both salesforce_account_id and salesforce_campaign_id |
 | Salesforce API error | "Failed to add to campaign" | Check n8n logs, verify Salesforce credentials |
 | Network error | "Failed to add to campaign" | Check n8n webhook URL, verify it's active |
 
