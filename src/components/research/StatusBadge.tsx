@@ -37,16 +37,16 @@ const statusConfig: Record<string, {
     variant: 'default',
     className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
   },
-  fail: { 
-    label: 'Salesforce failed (possible duplicate)', 
-    icon: AlertCircle, 
+  fail: {
+    label: 'Clay enrichment failed',
+    icon: AlertCircle,
     variant: 'destructive',
     className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
   },
 
-  failed: { 
-    label: 'Salesforce failed (possible duplicate)', 
-    icon: AlertCircle, 
+  failed: {
+    label: 'Clay enrichment failed',
+    icon: AlertCircle,
     variant: 'destructive',
     className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
   },
@@ -56,9 +56,9 @@ const statusConfig: Record<string, {
     variant: 'default',
     className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
   },
-  duplicate: { 
-    label: 'Duplicate', 
-    icon: AlertCircle, 
+  duplicate: {
+    label: 'Duplicate in Clay',
+    icon: AlertCircle,
     variant: 'destructive',
     className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
   },

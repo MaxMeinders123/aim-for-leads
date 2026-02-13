@@ -229,7 +229,11 @@ function CompaniesPage() {
     table: 'company_research',
     event: 'INSERT',
     filter: user?.id ? `user_id=eq.${user.id}` : undefined,
-    callback: () => loadCompletedResearch(),
+    callback: () => {
+      loadCompletedResearch();
+      // Clear re-research loading state when new research arrives
+      setReResearchingId(null);
+    },
     debounceMs: 500,
   });
 
@@ -237,7 +241,11 @@ function CompaniesPage() {
     table: 'company_research',
     event: 'UPDATE',
     filter: user?.id ? `user_id=eq.${user.id}` : undefined,
-    callback: () => loadCompletedResearch(),
+    callback: () => {
+      loadCompletedResearch();
+      // Clear re-research loading state when research updates
+      setReResearchingId(null);
+    },
     debounceMs: 500,
   });
 
@@ -396,15 +404,27 @@ function CompaniesPage() {
   const salesforceCompanies = pendingCompanies.filter((c) => c.salesforce_account_id);
   const manualCompanies = pendingCompanies.filter((c) => !c.salesforce_account_id);
 
-  // Handle re-research of a company
+  // Handle re-research of a company with confirmation
   const handleReResearch = async (companyResearchId: string) => {
     if (!user?.id || !selectedCampaign) return;
-    
+
     const researchedCompany = researchedCompanies.find(c => c.id === companyResearchId);
     if (!researchedCompany) return;
 
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      `Re-research "${researchedCompany.company_name || researchedCompany.company_domain}"?\n\n` +
+      `This will:\n` +
+      `• Create new company and prospect research\n` +
+      `• Find new decision-makers\n` +
+      `• Skip prospects with duplicate LinkedIn URLs\n\n` +
+      `Previous research will remain accessible.`
+    );
+
+    if (!confirmed) return;
+
     setReResearchingId(companyResearchId);
-    
+
     try {
       // Webhook URL resolved server-side by research-proxy
       // Build a minimal company object for the payload
@@ -416,21 +436,23 @@ function CompaniesPage() {
       };
 
       const payload = buildCompanyResearchPayload(selectedCampaign, companyForPayload, user.id);
-      
+
       // Trigger the research
       await callResearchProxy('company_research', payload);
-      
-      toast.success(`Re-research started for ${researchedCompany.company_name || researchedCompany.company_domain}`);
-      
-      // Reload the data after a short delay
-      setTimeout(() => {
-        loadCompletedResearch();
-      }, 2000);
+
+      toast.success(
+        `Re-research started for ${researchedCompany.company_name || researchedCompany.company_domain}. ` +
+        `This may take 2-3 minutes. Results will appear automatically.`,
+        { duration: 5000 }
+      );
+
+      // The realtime subscription will automatically update the UI when results arrive
+      // No need for setTimeout - the subscription handles it
     } catch (err: any) {
       toast.error(err.message || 'Failed to start re-research');
-    } finally {
       setReResearchingId(null);
     }
+    // Note: Don't clear reResearchingId here - let it persist until realtime subscription confirms completion
   };
 
   // Render researched companies section
