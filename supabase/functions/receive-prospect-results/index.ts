@@ -304,16 +304,17 @@ serve(async (req) => {
         return val.substring(0, maxLen).trim() || null;
       };
 
-      // Check for duplicates by name OR LinkedIn URL
+      // Check for duplicates: only skip if LinkedIn URL already exists
+      // LinkedIn URL is a unique identifier - much more reliable than name alone
+      // This prevents false positives where two different people have the same name
       const nameKey = `${(contact.first_name || '').toLowerCase()}_${(contact.last_name || '').toLowerCase()}`;
       const linkedinCheck = validateLinkedInUrl(contact.linkedin || contact.linkedin_url);
       const linkedinKey = linkedinCheck.url?.toLowerCase().replace(/\/$/, '') || '';
 
-      const isDuplicateName = existingNames.has(nameKey);
       const isDuplicateLinkedin = linkedinKey && existingLinkedins.has(linkedinKey);
 
-      if (isDuplicateName || isDuplicateLinkedin) {
-        console.log(`[receive-prospect-results] Skipping duplicate: ${contact.first_name} ${contact.last_name} (name: ${isDuplicateName}, linkedin: ${isDuplicateLinkedin})`);
+      if (isDuplicateLinkedin) {
+        console.log(`[receive-prospect-results] Skipping duplicate LinkedIn URL: ${contact.first_name} ${contact.last_name} - ${linkedinKey}`);
         skippedDuplicates.push(nameKey);
         continue;
       }

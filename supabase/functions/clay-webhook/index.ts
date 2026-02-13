@@ -70,11 +70,11 @@ serve(async (req) => {
       console.log(`[clay-webhook] Updating prospect by ${matchColumn}=${matchId} to status: ${newStatus}, crm_link: ${crmLink}`);
 
       // Build update object — only set fields that Clay actually sent
+      // Don't overwrite sent_to_clay_at to preserve original send timestamp
       const updateFields: Record<string, any> = {
         status: newStatus,
         clay_response: body,
-        sent_to_clay: true,
-        sent_to_clay_at: new Date().toISOString(),
+        sent_to_clay: true, // Keep this as true since Clay has responded
       };
       if (crmLink) updateFields.salesforce_url = crmLink;
       if (email) updateFields.email = email;

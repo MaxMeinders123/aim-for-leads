@@ -818,8 +818,10 @@ function ContactsViewPage() {
                                       {/* Clay Status Badge - improved messaging */}
                                       {(() => {
                                         const hasEnrichmentData = !!(prospect.email || prospect.phone);
-                                        const clayHasResponded = ['new', 'update', 'fail', 'duplicate'].includes(prospect.status?.toLowerCase() || '');
+                                        const clayHasResponded = ['new', 'update', 'fail', 'duplicate', 'inputted'].includes(prospect.status?.toLowerCase() || '');
+                                        const statusLower = prospect.status?.toLowerCase() || '';
 
+                                        // Show sending state
                                         if (isSending) {
                                           return (
                                             <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
@@ -829,7 +831,27 @@ function ContactsViewPage() {
                                           );
                                         }
 
-                                        if (hasEnrichmentData) {
+                                        // Check status FIRST before enrichment data
+                                        if (statusLower === 'fail' || statusLower === 'failed') {
+                                          return (
+                                            <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                                              <AlertCircle className="h-3 w-3 mr-1" />
+                                              Clay enrichment failed
+                                            </Badge>
+                                          );
+                                        }
+
+                                        if (statusLower === 'duplicate') {
+                                          return (
+                                            <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                                              <AlertCircle className="h-3 w-3 mr-1" />
+                                              Duplicate in Clay
+                                            </Badge>
+                                          );
+                                        }
+
+                                        // Show success states (new, update, inputted)
+                                        if (['new', 'update', 'inputted'].includes(statusLower) && hasEnrichmentData) {
                                           return (
                                             <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
                                               <Check className="h-3 w-3 mr-1" />
@@ -838,6 +860,7 @@ function ContactsViewPage() {
                                           );
                                         }
 
+                                        // Awaiting response from Clay
                                         if (prospect.sent_to_clay && !clayHasResponded) {
                                           return (
                                             <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">

@@ -86,9 +86,13 @@ serve(async (req) => {
           continue;
         }
 
-        // Check if already sent and has been enriched (status != pending)
-        if (prospect.sent_to_clay && prospect.status !== 'pending') {
-          results.push({ prospect_id: prospectId, success: false, error: "Already processed by Clay" });
+        // Check if already sent and successfully enriched
+        // Allow retry for 'fail', 'sent_to_clay', or 'pending' status
+        const retryableStatuses = ['fail', 'sent_to_clay', 'pending'];
+        const isSuccessful = ['new', 'update', 'inputted', 'duplicate'].includes(prospect.status?.toLowerCase() || '');
+
+        if (prospect.sent_to_clay && isSuccessful) {
+          results.push({ prospect_id: prospectId, success: false, error: "Already successfully processed by Clay" });
           continue;
         }
 
