@@ -18,6 +18,8 @@ import {
   Undo2,
   Pencil,
   X,
+  UserPlus,
+  AlertCircle,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -52,6 +54,7 @@ import {
   fetchCompanyResearch,
   fetchProspectResearch,
   exportProspectsToCSV,
+  addProspectToSalesforceCampaign,
 } from '@/services/api';
 import { CLAY_STATUSES } from '@/lib/constants';
 import { toast } from 'sonner';
@@ -108,6 +111,9 @@ function ContactsViewPage() {
   const [editingLinkedinId, setEditingLinkedinId] = useState<string | null>(null);
   const [linkedinInput, setLinkedinInput] = useState('');
   const refreshTimeoutRef = useRef<number | null>(null);
+  const [addingToCampaign, setAddingToCampaign] = useState<Record<string, boolean>>({});
+  const [addedToCampaign, setAddedToCampaign] = useState<Record<string, boolean>>({});
+  const [n8nWebhookUrl, setN8nWebhookUrl] = useState<string | null>(null);
 
   // LinkedIn verification dialog state
   const [linkedinCheckDialog, setLinkedinCheckDialog] = useState<{
@@ -214,6 +220,20 @@ function ContactsViewPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Fetch n8n webhook URL for "Add to Campaign"
+  useEffect(() => {
+    const fetchN8nUrl = async () => {
+      if (!user?.id) return;
+      const { data } = await supabase
+        .from('user_integrations')
+        .select('n8n_webhook_url')
+        .eq('user_id', user.id)
+        .single();
+      setN8nWebhookUrl(data?.n8n_webhook_url || null);
+    };
+    fetchN8nUrl();
+  }, [user?.id]);
 
   // Realtime subscription with proper cleanup (fixes memory leak)
   useRealtimeSubscription('contacts-view-rt', {
@@ -396,6 +416,65 @@ function ContactsViewPage() {
         next.delete(prospectId);
         return next;
       });
+    }
+  };
+
+  // Add prospect to Salesforce Campaign via n8n webhook
+  const handleAddToSalesforceCampaign = async (prospect: ProspectRow) => {
+    try {
+      setAddingToCampaign(prev => ({ ...prev, [prospect.id]: true }));
+
+      if (!n8nWebhookUrl) {
+        toast.error('n8n webhook not configured. Go to Settings to add your n8n webhook URL.');
+        return;
+      }
+
+      if (!prospect.salesforce_url) {
+        toast.error('No Salesforce contact URL found. Enrich this prospect with Clay first.');
+        return;
+      }
+
+      if (!selectedCampaign) {
+        toast.error('No campaign selected.');
+        return;
+      }
+
+      // Get salesforce IDs from the prospect's company
+      const { data: companyData } = await supabase
+        .from('prospect_research')
+        .select('salesforce_account_id, salesforce_campaign_id, personal_id')
+        .eq('id', prospect.id)
+        .single();
+
+      const sfAccountId = companyData?.salesforce_account_id;
+      const sfCampaignId = companyData?.salesforce_campaign_id;
+
+      if (!sfAccountId || !sfCampaignId) {
+        toast.error('Campaign missing Salesforce Account ID or Campaign ID. Update campaign settings.');
+        return;
+      }
+
+      const payload = {
+        personal_id: companyData?.personal_id || prospect.id,
+        session_id: null,
+        salesforce_contact_id: prospect.salesforce_url,
+        salesforce_campaign_id: sfCampaignId,
+        prospect_name: `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim(),
+        prospect_title: prospect.job_title,
+        company_name: prospect.company_name || null,
+        linkedin_url: prospect.linkedin_url,
+        email: prospect.email,
+        phone: prospect.phone,
+      };
+
+      await addProspectToSalesforceCampaign(n8nWebhookUrl, payload);
+      toast.success(`Added ${payload.prospect_name} to Salesforce campaign`);
+      setAddedToCampaign(prev => ({ ...prev, [prospect.id]: true }));
+    } catch (error: any) {
+      logger.error('Failed to add to Salesforce campaign', { prospectId: prospect.id, error });
+      toast.error(error.message || 'Failed to add to Salesforce campaign');
+    } finally {
+      setAddingToCampaign(prev => ({ ...prev, [prospect.id]: false }));
     }
   };
 
@@ -885,6 +964,32 @@ function ContactsViewPage() {
                                     >
                                       <UserX className="h-4 w-4" />
                                     </Button>
+                                    {/* Add to Salesforce Campaign button */}
+                                    {prospect.salesforce_url && n8nWebhookUrl && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleAddToSalesforceCampaign(prospect)}
+                                        disabled={addingToCampaign[prospect.id] || addedToCampaign[prospect.id]}
+                                        className={cn(
+                                          "h-8 px-2",
+                                          addedToCampaign[prospect.id] && "text-green-600"
+                                        )}
+                                        title={
+                                          addedToCampaign[prospect.id]
+                                            ? "Added to Salesforce campaign"
+                                            : "Add to Salesforce campaign"
+                                        }
+                                      >
+                                        {addingToCampaign[prospect.id] ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : addedToCampaign[prospect.id] ? (
+                                          <Check className="h-4 w-4" />
+                                        ) : (
+                                          <UserPlus className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                    )}
                                   </div>
                                 </div>
                               </div>

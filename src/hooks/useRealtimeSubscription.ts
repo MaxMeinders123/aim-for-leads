@@ -90,8 +90,8 @@ export function useRealtimeSubscription(
 
     // Subscribe to changes
     channelRef.current
-      .on('postgres_changes', subscriptionConfig, wrappedCallback)
-      .subscribe((status) => {
+      .on('postgres_changes' as any, subscriptionConfig as any, wrappedCallback)
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
           console.log(`✅ Subscribed to ${channelName}`);
         } else if (status === 'CHANNEL_ERROR') {

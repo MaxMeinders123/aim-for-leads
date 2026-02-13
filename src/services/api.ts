@@ -395,6 +395,44 @@ export async function fetchProspectResearch(companyResearchIds: string[]) {
 // CSV Export
 // =============================================================================
 
+// =============================================================================
+// Add prospect to Salesforce Campaign via n8n webhook
+// =============================================================================
+
+export async function addProspectToSalesforceCampaign(
+  webhookUrl: string,
+  payload: {
+    personal_id: string;
+    session_id: string | null;
+    salesforce_contact_id: string;
+    salesforce_campaign_id: string;
+    prospect_name: string;
+    prospect_title: string | null;
+    company_name: string | null;
+    linkedin_url: string | null;
+    email: string | null;
+    phone: string | null;
+  }
+) {
+  const response = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.message || 'Failed to add to Salesforce campaign');
+  }
+
+  return { success: true, data: result };
+}
+
+// =============================================================================
+// CSV Export
+// =============================================================================
+
 export function exportProspectsToCSV(
   prospects: Array<{
     first_name?: string | null;
