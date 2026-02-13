@@ -258,6 +258,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                       {/* Clay Status Badge - improved messaging */}
                       {(() => {
                         const hasEnrichmentData = !!(prospect.email || prospect.phone);
+                        const clayHasResponded = ['new', 'update', 'fail', 'duplicate'].includes(prospect.status?.toLowerCase() || '');
 
                         if (isSending) {
                           return (
@@ -282,7 +283,7 @@ export const ProspectTable = ({ prospects, onProspectUpdated }: ProspectTablePro
                           );
                         }
 
-                        if (prospect.sent_to_clay) {
+                        if (prospect.sent_to_clay && !clayHasResponded) {
                           return (
                             <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
                               <span className="flex items-center gap-1">
