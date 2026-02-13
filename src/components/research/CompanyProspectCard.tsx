@@ -192,7 +192,49 @@ export function CompanyProspectCard({ company, prospects, onProspectUpdated }: C
                               {prospect.priority}
                             </Badge>
                           )}
-                          <StatusBadge status={prospect.status} />
+                          {/* Clay Status Badge - improved messaging */}
+                          {(() => {
+                            const hasEnrichmentData = !!(prospect.email || prospect.phone);
+
+                            if (isSending) {
+                              return (
+                                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                  <span className="flex items-center gap-1">
+                                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                                    </svg>
+                                    Sending to Clay...
+                                  </span>
+                                </Badge>
+                              );
+                            }
+
+                            if (hasEnrichmentData) {
+                              return (
+                                <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                                  Enriched by Clay
+                                </Badge>
+                              );
+                            }
+
+                            if (prospect.sent_to_clay) {
+                              return (
+                                <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                                  <span className="flex items-center gap-1">
+                                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                                    </svg>
+                                    Awaiting Clay enrichment
+                                  </span>
+                                </Badge>
+                              );
+                            }
+
+                            // Show old status badge for other cases
+                            return <StatusBadge status={prospect.status} />;
+                          })()}
                           {prospect.pitch_type && (
                             <Badge variant="outline" className="text-xs">
                               {prospect.pitch_type}
@@ -284,15 +326,19 @@ export function CompanyProspectCard({ company, prospects, onProspectUpdated }: C
                         {(!prospect.status || prospect.status === 'pending') && !prospect.sent_to_clay && (
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="default"
                             onClick={() => handleSendToClay(prospect.id)}
                             disabled={isSending}
+                            className="min-w-[130px]"
                           >
                             {isSending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                Sending...
+                              </>
                             ) : (
                               <>
-                                <Send className="h-4 w-4 mr-1" />
+                                <Send className="h-4 w-4 mr-2" />
                                 Send to Clay
                               </>
                             )}
