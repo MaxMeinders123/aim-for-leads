@@ -11,7 +11,7 @@ const corsHeaders = {
 
 // Resolve webhook URL server-side: user_integrations → env secret fallback
 async function resolveWebhookUrl(
-  supabase: ReturnType<typeof createClient>,
+  supabaseClient: any,
   userId: string,
   webhookType: string,
 ): Promise<string | null> {
@@ -25,7 +25,7 @@ async function resolveWebhookUrl(
 
   const column = columnMap[webhookType];
   if (column) {
-    const { data } = await supabase
+    const { data } = await supabaseClient
       .from("user_integrations")
       .select(column)
       .eq("user_id", userId)
