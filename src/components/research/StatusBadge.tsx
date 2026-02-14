@@ -38,17 +38,17 @@ const statusConfig: Record<string, {
     className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
   },
   fail: {
-    label: 'Clay enrichment failed',
+    label: 'Duplicate account in Salesforce',
     icon: AlertCircle,
     variant: 'destructive',
-    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+    className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
   },
 
   failed: {
-    label: 'Clay enrichment failed',
+    label: 'Duplicate account in Salesforce',
     icon: AlertCircle,
     variant: 'destructive',
-    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+    className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
   },
   inputted: { 
     label: 'Inputted', 
