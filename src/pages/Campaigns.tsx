@@ -11,6 +11,7 @@ import {
   ArrowRight,
   Loader2,
   Target,
+  Copy,
 } from 'lucide-react';
 import { AppLayout } from '@/components/AppLayout';
 import { PageHeader } from '@/components/PageHeader';
@@ -201,6 +202,31 @@ function CampaignsPage() {
     }
   };
 
+  const handleDuplicate = async (campaign: (typeof campaigns)[0], e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user) return;
+    try {
+      const duplicateDraft = {
+        name: `${campaign.name} (Copy)`,
+        target_region: campaign.target_region || '',
+        product: campaign.product || '',
+        product_category: campaign.product_category || '',
+        technical_focus: campaign.technical_focus || '',
+        job_titles: campaign.job_titles || '',
+        personas: campaign.personas || '',
+        target_verticals: campaign.target_verticals || '',
+        primary_angle: campaign.primary_angle || '',
+        secondary_angle: campaign.secondary_angle || '',
+        pain_points: campaign.pain_points || '',
+      };
+      const created = await createCampaign(user.id, duplicateDraft as unknown as Record<string, unknown>);
+      setCampaigns([created, ...campaigns]);
+      toast.success('Campaign duplicated');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to duplicate campaign');
+    }
+  };
+
   const stepLabels = ['Basics', 'Identity', 'Audience', 'Strategy'];
 
   const campaignsWithContacts = campaigns.filter((c) => (c.contacts_count || 0) > 0);
@@ -222,6 +248,10 @@ function CampaignsPage() {
         <DropdownMenuItem onClick={(e) => openEdit(campaign, e)}>
           <Pencil className="mr-2 h-4 w-4" />
           Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={(e) => handleDuplicate(campaign, e)}>
+          <Copy className="mr-2 h-4 w-4" />
+          Duplicate
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={(e) => {

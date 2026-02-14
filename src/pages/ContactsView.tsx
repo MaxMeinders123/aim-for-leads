@@ -544,12 +544,12 @@ function ContactsViewPage() {
       return { label: 'Added to Salesforce', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300', tooltip: 'Successfully added to Salesforce' };
     }
     if (status === CLAY_STATUSES.FAILED || status === 'fail') {
-      return { label: 'Clay failed', className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', tooltip: 'Clay enrichment failed for this contact' };
+      return { label: 'Duplicate account in Salesforce', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300', tooltip: 'A duplicate account was found in Salesforce' };
     }
-    if (status === CLAY_STATUSES.SENT || status === CLAY_STATUSES.PENDING || sentToClay) {
+    if (status === CLAY_STATUSES.SENT || sentToClay) {
       return { label: 'Waiting for Clay feedback', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300', tooltip: 'Sent to Clay, waiting for enrichment results' };
     }
-    return { label: 'Not sent', className: 'bg-muted text-muted-foreground', tooltip: 'Not yet sent to Clay for enrichment' };
+    return null;
   };
 
   const handleSaveLinkedin = async (prospectId: string) => {
@@ -834,9 +834,9 @@ function ContactsViewPage() {
                                         // Check status FIRST before enrichment data
                                         if (statusLower === 'fail' || statusLower === 'failed') {
                                           return (
-                                            <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                                            <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
                                               <AlertCircle className="h-3 w-3 mr-1" />
-                                              Clay enrichment failed
+                                              Duplicate account in Salesforce
                                             </Badge>
                                           );
                                         }
@@ -870,8 +870,9 @@ function ContactsViewPage() {
                                           );
                                         }
 
-                                        // Show old status meta for other cases
+                                        // Show old status meta for other cases (only if there's a meaningful status)
                                         const statusMeta = getClayStatusMeta(prospect.status, prospect.sent_to_clay);
+                                        if (!statusMeta) return null;
                                         return (
                                           <Badge
                                             className={statusMeta.className}
