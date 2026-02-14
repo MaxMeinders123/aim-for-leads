@@ -522,12 +522,16 @@ function ContactsViewPage() {
   };
 
   // Stats (based on current filters)
+  const allProspects = companyGroups.flatMap((g) => g.prospects);
   const totalProspects = filteredGroups.reduce((sum, g) => sum + g.prospects.length, 0);
   const sentCount = filteredGroups.reduce(
     (sum, g) => sum + g.prospects.filter((p) => p.sent_to_clay).length,
     0,
   );
   const unsentCount = totalProspects - sentCount;
+  const sfStatuses = ['new', 'update', 'inputted'];
+  const addedToSfCount = allProspects.filter((p) => sfStatuses.includes(p.status?.toLowerCase() || '')).length;
+  const wrongContactCount = notWorkingProspects.length;
 
 
   const getClayStatusMeta = (status: string | null, sentToClay: boolean) => {
@@ -624,7 +628,7 @@ function ContactsViewPage() {
           </Alert>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-4 max-w-2xl">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl">
             <div className="bg-card border rounded-lg p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-primary/10">
@@ -657,6 +661,28 @@ function ContactsViewPage() {
                     {sentCount}<span className="text-sm font-normal text-muted-foreground">/{totalProspects}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">Sent to Clay</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-card border rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <UserPlus className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{addedToSfCount}</p>
+                  <p className="text-xs text-muted-foreground">In Salesforce</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-card border rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-red-500/10">
+                  <UserX className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{wrongContactCount}</p>
+                  <p className="text-xs text-muted-foreground">Wrong Contacts</p>
                 </div>
               </div>
             </div>
