@@ -82,7 +82,7 @@ export default function Login() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="john@cloudar.com"
+              placeholder="email@engagetech.io"
               className="h-12 rounded-xl border-border bg-background"
               required
             />
